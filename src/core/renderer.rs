@@ -1,6 +1,6 @@
 use std::sync::Arc;
-use wgpu::wgc::command;
 use winit::window::{Window};
+use crate::core::pipeline_builder::PipelineBuilder;
 
 pub struct WgpuState {
     instance: wgpu::Instance,
@@ -10,6 +10,7 @@ pub struct WgpuState {
     config: wgpu::SurfaceConfiguration,
     size: (u32, u32),
     window: Arc<Window>,
+    pub render_pipeline: wgpu::RenderPipeline,
 }
 
 impl WgpuState {
@@ -61,6 +62,11 @@ impl WgpuState {
 
         surface.configure(&device, &config);
 
+        let mut pipeline_builder = PipelineBuilder::new();
+        pipeline_builder.set_shader_module("shader.wgsl", "vs_main", "fs_main");
+        pipeline_builder.set_pixel_format(config.format);
+        let render_pipeline = pipeline_builder.build_pipeline(&device);
+
         Self {
             instance,
             surface,
@@ -69,6 +75,7 @@ impl WgpuState {
             config,
             size: (size.width, size.height),
             window,
+            render_pipeline,
         }
     }
 
@@ -112,7 +119,11 @@ impl WgpuState {
             multiview_mask: None,
         };
 
-        command_encoder.begin_render_pass(&render_pass_descriptor);
+        let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
+        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.draw(0..3, 0..1);
+        drop(render_pass);
+
         self.queue.submit(std::iter::once(command_encoder.finish()));
 
         drawable.present();
