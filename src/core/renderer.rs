@@ -87,6 +87,7 @@ impl WgpuState {
                 return;
             }
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                self.resize(self.size.0, self.size.1);
                 return;
             }
             _ => return,
@@ -130,10 +131,12 @@ impl WgpuState {
     }
 
     pub fn resize(&mut self, new_width: u32, new_height: u32) {
-        self.size = (new_width, new_height);
-        self.config.width = new_width;
-        self.config.height = new_height;
-        self.surface.configure(&self.device, &self.config);
+        if new_width > 0 && new_height > 0 {
+            self.size = (new_width, new_height);
+            self.config.width = new_width;
+            self.config.height = new_height;
+            self.surface.configure(&self.device, &self.config);
+        }
     }
 
     pub fn update_surface(&mut self) {

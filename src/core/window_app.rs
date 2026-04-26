@@ -32,11 +32,12 @@ impl WindowApp {
     }
 
     pub fn change_resolution(&mut self, width: f64, height: f64) {
-        if width <= 0.0 || height <= 0.0 { return; }
-        self.screen_width = width;
-        self.screen_height = height;
-        if let Some(window) = &self.window {
-            let _ = window.request_inner_size(LogicalSize::new(self.screen_width, self.screen_height));
+        if width > 0.0 && height > 0.0 {
+            self.screen_width = width;
+            self.screen_height = height;
+            if let Some(window) = &self.window {
+                let _ = window.request_inner_size(LogicalSize::new(self.screen_width, self.screen_height));
+            }
         }
     }
 }

@@ -5,7 +5,7 @@ struct VertexPayload {
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VertexPayload {
-    var positions = array<vec2<f32>, 3>(
+    let positions = array<vec2<f32>, 3>(
         vec2<f32>(0.0, 0.5),   // Top vertex
         vec2<f32>(-0.5, -0.5), // Bottom left vertex
         vec2<f32>(0.5, -0.5)   // Bottom right vertex
