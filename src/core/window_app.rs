@@ -6,14 +6,19 @@ use winit::window::{Fullscreen, Window, WindowId};
 use winit::event::{ElementState, KeyEvent};
 use winit::keyboard::{PhysicalKey, KeyCode};
 use winit::dpi::LogicalSize;
+use std::time::Instant;
 use crate::core::renderer::WgpuState;
+use crate::game::state::GameState;
 
 const TITLE: &str = "Voidseek";
 
 pub struct WindowApp {
     window: Option<Arc<Window>>,
     renderer: Option<WgpuState>,
+    game: GameState,
+    last_time: Instant,
     fullscreen: bool,
+    mouse_locked: bool,
     screen_width: f64,
     screen_height: f64,
 }
@@ -28,6 +33,20 @@ impl WindowApp {
                 None
             };
             window.set_fullscreen(fullscreen_mode);
+        }
+    }
+
+    pub fn toggle_mouse_lock(&mut self) {
+        self.mouse_locked = !self.mouse_locked;
+        if let Some(window) = &self.window {
+            if self.mouse_locked {
+                let _ = window.set_cursor_grab(winit::window::CursorGrabMode::Locked)
+                    .or_else(|_| window.set_cursor_grab(winit::window::CursorGrabMode::Confined));
+                window.set_cursor_visible(false);
+            } else {
+                let _ = window.set_cursor_grab(winit::window::CursorGrabMode::None);
+                window.set_cursor_visible(true);
+            }
         }
     }
 
@@ -53,6 +72,8 @@ impl ApplicationHandler for WindowApp {
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
         self.window = Some(window.clone());
         
+        self.game.start();
+        
         // Inicializácia WgpuState cez pollster (asynchrónna operácia v synchrónnom kontexte)
         let wgpu_state = pollster::block_on(WgpuState::new(window));
         self.renderer = Some(wgpu_state);
@@ -61,23 +82,38 @@ impl ApplicationHandler for WindowApp {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                //The close button was pressed; stopping
                 event_loop.exit();
             },
             WindowEvent::KeyboardInput { 
                 event: KeyEvent { 
                     physical_key,
-                    state: ElementState::Pressed, 
+                    state, 
                     .. 
                 }, 
                 ..
             } => {
-                match physical_key {
-                    PhysicalKey::Code(KeyCode::Escape) => {
+                match (physical_key, state) {
+                    (PhysicalKey::Code(KeyCode::Escape), ElementState::Pressed) => {
                         event_loop.exit();
                     }
-                    PhysicalKey::Code(KeyCode::KeyP) => {
+                    (PhysicalKey::Code(KeyCode::KeyP), ElementState::Pressed) => {
                         self.toggle_fullscreen();
+                    }
+                    (PhysicalKey::Code(KeyCode::KeyL), ElementState::Pressed) => {
+                        self.toggle_mouse_lock();
+                    }
+
+                    (PhysicalKey::Code(KeyCode::KeyW), state) => {
+                        self.game.input.forward = state == ElementState::Pressed;
+                    }
+                    (PhysicalKey::Code(KeyCode::KeyS), state) => {
+                        self.game.input.backward = state == ElementState::Pressed;
+                    }
+                    (PhysicalKey::Code(KeyCode::KeyA), state) => {
+                        self.game.input.left = state == ElementState::Pressed;
+                    }
+                    (PhysicalKey::Code(KeyCode::KeyD), state) => {
+                        self.game.input.right = state == ElementState::Pressed;
                     }
                     _ => (),
                 }
@@ -88,6 +124,11 @@ impl ApplicationHandler for WindowApp {
                 }
             }
             WindowEvent::RedrawRequested => {
+                let dt = self.last_time.elapsed().as_secs_f32();
+                self.last_time = Instant::now();
+                
+                self.game.update(dt);
+
                 if let Some(renderer) = &mut self.renderer {
                     renderer.render();
                 }
@@ -99,6 +140,14 @@ impl ApplicationHandler for WindowApp {
             _ => (),
         }
     }
+
+    fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: winit::event::DeviceId, event: winit::event::DeviceEvent) {
+        if let winit::event::DeviceEvent::MouseMotion { delta: (dx, _dy) } = event {
+            if self.mouse_locked {
+                self.game.input.mouse_dx += dx;
+            }
+        }
+    }
 }
 
 impl WindowApp {
@@ -106,7 +155,10 @@ impl WindowApp {
         Self { 
             window: None, 
             renderer: None,
+            game: GameState::new(),
+            last_time: Instant::now(),
             fullscreen: false, 
+            mouse_locked: false,
             screen_width, 
             screen_height 
         }

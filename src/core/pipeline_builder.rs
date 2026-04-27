@@ -11,9 +11,9 @@ pub struct PipelineBuilder {
 impl PipelineBuilder {
     pub fn new() -> Self {
         Self {
-            shdader_filename: "dummy".to_string(),
-            vertex_entry: "dummy".to_string(),
-            fragment_entry: "dummy".to_string(),
+            shdader_filename: "".to_string(),
+            vertex_entry: "".to_string(),
+            fragment_entry: "".to_string(),
             pixel_format: wgpu::TextureFormat::Rgba8UnormSrgb,
         }
     }

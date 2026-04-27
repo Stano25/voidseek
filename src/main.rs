@@ -1,10 +1,11 @@
 use winit::event_loop::{ControlFlow, EventLoop};
 
+pub mod game;
 mod core;
 use core::window_app::WindowApp;
 
-const WINDOW_WIDTH: f64 = 960.0;
-const WINDOW_HEIGHT: f64 = 540.0;
+const WINDOW_WIDTH: f64 = 480.0;
+const WINDOW_HEIGHT: f64 = 270.0;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
