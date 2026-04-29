@@ -1,24 +1,39 @@
+struct Camera {
+    position: vec2<f32>,
+    direction: f32,
+    fov: f32,
+    render_distance: f32,
+    resolution: u32,
+}
+
+struct Map {
+    width: u32,
+    height: u32,
+    tile_size: u32,
+    wall_data: array<u32>,
+}
+
+@group(0) @binding(0) var<uniform> camera: Camera;
+@group(0) @binding(1) var<storage, read> map: Map;
+
 struct VertexPayload {
     @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>, // Zmenili sme farby na UV súradnice pre textúru
+    @location(0) uv: vec2<f32>, 
 }
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VertexPayload {
     let positions = array<vec2<f32>, 3>(
-        vec2<f32>(-1.0, -1.0), // Ľavý dolný roh obrazovky
-        vec2<f32>( 3.0, -1.0), // Pravý dolný roh (úplne mimo monitora vpravo)
-        vec2<f32>(-1.0,  3.0)  // Ľavý horný roh (úplne mimo monitora hore)
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 3.0, -1.0),
+        vec2<f32>(-1.0,  3.0)
     );
     
     var out: VertexPayload;
     let pos = positions[i];
     
     out.position = vec4<f32>(pos, 0.0, 1.0);
-    
-    // Prepočet obrazovky (-1 až 1) na UV súradnice (0 až 1)
-    // Toto budeš nevyhnutne potrebovať v ďalšom kroku pre načítanie textúry!
-    // U(x) ide zľava doprava, V(y) ide zhora nadol.
+
     out.uv = vec2<f32>(
         pos.x * 0.5 + 0.5,
         1.0 - (pos.y * 0.5 + 0.5)

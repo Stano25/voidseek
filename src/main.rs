@@ -1,4 +1,5 @@
 use winit::event_loop::{ControlFlow, EventLoop};
+use game::state::GameState;
 
 pub mod game;
 mod core;
@@ -14,6 +15,9 @@ fn main() {
     // dispatched any events. This is ideal for games and similar applications.
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = WindowApp::new(WINDOW_WIDTH, WINDOW_HEIGHT);
+    let mut game_state = GameState::new();
+    game_state.start();
+
+    let mut app = WindowApp::new(WINDOW_WIDTH, WINDOW_HEIGHT, game_state);
     event_loop.run_app(&mut app);
 }

@@ -72,8 +72,6 @@ impl ApplicationHandler for WindowApp {
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
         self.window = Some(window.clone());
         
-        self.game.start();
-        
         // Inicializácia WgpuState cez pollster (asynchrónna operácia v synchrónnom kontexte)
         let wgpu_state = pollster::block_on(WgpuState::new(window));
         self.renderer = Some(wgpu_state);
@@ -151,11 +149,11 @@ impl ApplicationHandler for WindowApp {
 }
 
 impl WindowApp {
-    pub fn new(screen_width: f64, screen_height: f64) -> Self {
+    pub fn new(screen_width: f64, screen_height: f64, game: GameState) -> Self {
         Self { 
             window: None, 
             renderer: None,
-            game: GameState::new(),
+            game,
             last_time: Instant::now(),
             fullscreen: false, 
             mouse_locked: false,
