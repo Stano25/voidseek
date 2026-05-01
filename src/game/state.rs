@@ -37,4 +37,8 @@ impl GameState {
         let (x, y) = self.player.position();
         (x, y, self.player.angle())
     }
+
+    pub fn get_map_data(&self) -> &[u32] {
+        &self.map
+    }
 }

@@ -5,6 +5,10 @@ use wgpu::util::DeviceExt;
 use std::collections::HashMap;
 use crate::core::definitions::{PipelineType, BindScope};
 use crate::core::bind_group_layout;
+use crate::{MAX_MAP_TILES, TILE_SIZE, MAX_MAP_WIDTH, MAX_MAP_HEIGHT};
+
+const RENDER_WIDTH: u32 = 480;
+const RENDER_HEIGHT: u32 = 270;
 
 pub struct WgpuState {
     instance: wgpu::Instance,
@@ -23,6 +27,8 @@ pub struct WgpuState {
     map_bind_group: wgpu::BindGroup,
     map_buffer: wgpu::Buffer,
     
+    offscreen_view: wgpu::TextureView,
+    blit_bind_group: wgpu::BindGroup,
 }
 
 impl WgpuState {
@@ -74,9 +80,50 @@ impl WgpuState {
 
         surface.configure(&device, &config);
 
+        // Vytvorenie offscreen textúry
+        let offscreen_format = wgpu::TextureFormat::Rgba8Unorm; // Formát pre našu malú textúru
+        let offscreen_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Offscreen Texture"),
+            size: wgpu::Extent3d { width: RENDER_WIDTH, height: RENDER_HEIGHT, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: offscreen_format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let offscreen_view = offscreen_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Sampler s Nearest filtrom pre zachovanie ostrosti pixelov
+        let offscreen_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Offscreen Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
+
         let bind_group_layouts = Self::build_bind_groups_layouts(&device);
 
-        let render_pipelines = Self::build_pipelines(&device, &config, &bind_group_layouts);
+        let blit_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Blit Bind Group"),
+            layout: &bind_group_layouts[&BindScope::BlitTexture],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&offscreen_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&offscreen_sampler),
+                },
+            ],
+        });
+
+        let render_pipelines = Self::build_pipelines(&device, &config, offscreen_format, &bind_group_layouts);
         
         
         let camera_data:[f32; 8] =[0.0, 0.0, 1.0, 0.0, 0.0, 0.66, 800.0, 600.0]; 
@@ -95,20 +142,10 @@ impl WgpuState {
             }],
         });
 
-        let map_data: Vec<u32> = vec![
-            8,
-            8,
-            64,
-            0,
-            1,1,1,1,1,1,1,1,
-            1,0,1,0,0,0,0,1,
-            1,0,1,0,0,0,0,1,
-            1,0,1,0,0,0,0,1,
-            1,0,0,0,0,0,0,1,
-            1,0,0,0,0,1,0,1,
-            1,0,0,0,0,0,0,1,
-            1,1,1,1,1,1,1,1,
-        ];
+        let mut map_data: Vec<u32> = vec![0; 3 + MAX_MAP_TILES as usize];
+        map_data[0] = MAX_MAP_WIDTH;
+        map_data[1] = MAX_MAP_HEIGHT;
+        map_data[2] = TILE_SIZE;
         
         let map_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Map Buffer"),
@@ -139,6 +176,8 @@ impl WgpuState {
             camera_buffer,
             map_bind_group,
             map_buffer,
+            offscreen_view,
+            blit_bind_group
         }
     }
 
@@ -183,13 +222,57 @@ impl WgpuState {
             multiview_mask: None,
         };
 
-        let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
-        let render_pipeline = self.render_pipelines.get(&PipelineType::Raycast).unwrap();
-        render_pass.set_pipeline(render_pipeline);
-        render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-        render_pass.set_bind_group(1, &self.map_bind_group, &[]);
-        render_pass.draw(0..3, 0..1);
-        drop(render_pass);
+        //Kreslíme Raycast do textury (offscreen_view)
+        {
+            let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Raycast Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.offscreen_view, // <--- ZMENA: Tu musí byť offscreen_view!
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+            });
+
+            let render_pipeline = self.render_pipelines.get(&PipelineType::Raycast).unwrap();
+            render_pass.set_pipeline(render_pipeline);
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.map_bind_group, &[]);
+            render_pass.draw(0..3, 0..1);
+            // Tu automaticky zanikne `render_pass` vďaka bloku {} a drop()
+        }
+
+        //Kreslíme texturu na okno
+        {
+            let mut blit_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Blit Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &image_view, // Kreslíme do okna
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+            });
+
+            let blit_pipeline = self.render_pipelines.get(&PipelineType::Blit).unwrap();
+            blit_pass.set_pipeline(blit_pipeline);
+            blit_pass.set_bind_group(0, &self.blit_bind_group, &[]);
+            blit_pass.draw(0..3, 0..1);
+        }
 
         self.queue.submit(std::iter::once(command_encoder.finish()));
 
@@ -238,11 +321,34 @@ impl WgpuState {
         layout = builder.build("Map Bind Group Layout");
         layouts.insert(BindScope::Map, layout);
 
+        
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        });
+        
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            count: None,
+        });
+        
+        layout = builder.build("Blit Bind Group Layout");
+        layouts.insert(BindScope::BlitTexture, layout);
+
         layouts
     }
 
     fn build_pipelines(device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
+        offscreen_format: wgpu::TextureFormat,
         bind_group_layouts: &HashMap<BindScope, wgpu::BindGroupLayout>)
         -> HashMap<PipelineType, wgpu::RenderPipeline> {
 
@@ -250,12 +356,18 @@ impl WgpuState {
         let mut builder = pipeline::Builder::new(device);
         let mut pipeline: wgpu::RenderPipeline;
         builder.set_shader_module("raycast.wgsl", "vs_main", "fs_main");
-        builder.set_pixel_format(config.format);
+        builder.set_pixel_format(offscreen_format);
         builder.add_bind_group_layout(&bind_group_layouts[&BindScope::Camera]);
         builder.add_bind_group_layout(&bind_group_layouts[&BindScope::Map]);
         pipeline = builder.build("Raycast Pipeline");
         
         pipelines.insert(PipelineType::Raycast, pipeline);
+
+        let mut blit_builder = pipeline::Builder::new(device);
+        blit_builder.set_shader_module("blit.wgsl", "vs_main", "fs_main");
+        blit_builder.set_pixel_format(config.format);
+        blit_builder.add_bind_group_layout(&bind_group_layouts[&BindScope::BlitTexture]);
+        pipelines.insert(PipelineType::Blit, blit_builder.build("Blit Pipeline"));
 
         pipelines
     }
@@ -283,12 +395,11 @@ impl WgpuState {
     }
 
     pub fn update_map(&mut self, map_data: &[u32]) {
-
         self.queue.write_buffer(
-            &self.map_buffer,
-            0,
-            bytemuck::cast_slice(map_data),
-        );
+        &self.map_buffer,
+        12,
+        bytemuck::cast_slice(map_data),
+    );
     }
 
     pub fn update_surface(&mut self) {

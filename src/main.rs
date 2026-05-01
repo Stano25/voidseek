@@ -5,8 +5,12 @@ pub mod game;
 mod core;
 use core::window_app::WindowApp;
 
-const WINDOW_WIDTH: f64 = 480.0;
-const WINDOW_HEIGHT: f64 = 270.0;
+const WINDOW_WIDTH: f64 = 960.0;
+const WINDOW_HEIGHT: f64 = 540.0;
+const MAX_MAP_WIDTH: u32 = 8;
+const MAX_MAP_HEIGHT: u32 = 8;
+const MAX_MAP_TILES: u32 = MAX_MAP_WIDTH * MAX_MAP_HEIGHT;
+const TILE_SIZE: u32 = 64;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
