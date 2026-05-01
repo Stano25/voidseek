@@ -1,3 +1,5 @@
 pub mod window_app;
 pub mod renderer;
-pub mod pipeline_builder;
+pub mod pipeline;
+pub mod definitions;
+pub mod bind_group_layout;

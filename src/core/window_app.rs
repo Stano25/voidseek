@@ -128,6 +128,8 @@ impl ApplicationHandler for WindowApp {
                 self.game.update(dt);
 
                 if let Some(renderer) = &mut self.renderer {
+                    let (cam_x, cam_y, cam_angle) = self.game.camera_pose();
+                    renderer.update_camera(cam_x, cam_y, cam_angle);
                     renderer.render();
                 }
                 

@@ -1,6 +1,10 @@
 use std::sync::Arc;
 use winit::window::{Window};
-use crate::core::pipeline_builder::PipelineBuilder;
+use crate::core::pipeline;
+use wgpu::util::DeviceExt;
+use std::collections::HashMap;
+use crate::core::definitions::{PipelineType, BindScope};
+use crate::core::bind_group_layout;
 
 pub struct WgpuState {
     instance: wgpu::Instance,
@@ -10,7 +14,15 @@ pub struct WgpuState {
     config: wgpu::SurfaceConfiguration,
     size: (u32, u32),
     window: Arc<Window>,
-    pub render_pipeline: wgpu::RenderPipeline,
+    render_pipelines: HashMap<PipelineType, wgpu::RenderPipeline>,
+    bind_group_layouts: HashMap<BindScope, wgpu::BindGroupLayout>,
+
+    
+    camera_bind_group: wgpu::BindGroup,
+    camera_buffer: wgpu::Buffer,
+    map_bind_group: wgpu::BindGroup,
+    map_buffer: wgpu::Buffer,
+    
 }
 
 impl WgpuState {
@@ -62,10 +74,56 @@ impl WgpuState {
 
         surface.configure(&device, &config);
 
-        let mut pipeline_builder = PipelineBuilder::new();
-        pipeline_builder.set_shader_module("shader.wgsl", "vs_main", "fs_main");
-        pipeline_builder.set_pixel_format(config.format);
-        let render_pipeline = pipeline_builder.build_pipeline(&device);
+        let bind_group_layouts = Self::build_bind_groups_layouts(&device);
+
+        let render_pipelines = Self::build_pipelines(&device, &config, &bind_group_layouts);
+        
+        
+        let camera_data:[f32; 8] =[0.0, 0.0, 1.0, 0.0, 0.0, 0.66, 800.0, 600.0]; 
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&camera_data),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Camera Bind Group"),
+            layout: &bind_group_layouts[&BindScope::Camera],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+        });
+
+        let map_data: Vec<u32> = vec![
+            8,
+            8,
+            64,
+            0,
+            1,1,1,1,1,1,1,1,
+            1,0,1,0,0,0,0,1,
+            1,0,1,0,0,0,0,1,
+            1,0,1,0,0,0,0,1,
+            1,0,0,0,0,0,0,1,
+            1,0,0,0,0,1,0,1,
+            1,0,0,0,0,0,0,1,
+            1,1,1,1,1,1,1,1,
+        ];
+        
+        let map_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Map Buffer"),
+            contents: bytemuck::cast_slice(&map_data),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let map_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Map Bind Group"),
+            layout: &bind_group_layouts[&BindScope::Map],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: map_buffer.as_entire_binding(),
+            }],
+        });
 
         Self {
             instance,
@@ -75,7 +133,12 @@ impl WgpuState {
             config,
             size: (size.width, size.height),
             window,
-            render_pipeline,
+            render_pipelines,
+            bind_group_layouts,
+            camera_bind_group,
+            camera_buffer,
+            map_bind_group,
+            map_buffer,
         }
     }
 
@@ -121,7 +184,10 @@ impl WgpuState {
         };
 
         let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
-        render_pass.set_pipeline(&self.render_pipeline);
+        let render_pipeline = self.render_pipelines.get(&PipelineType::Raycast).unwrap();
+        render_pass.set_pipeline(render_pipeline);
+        render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+        render_pass.set_bind_group(1, &self.map_bind_group, &[]);
         render_pass.draw(0..3, 0..1);
         drop(render_pass);
 
@@ -137,6 +203,92 @@ impl WgpuState {
             self.config.height = new_height;
             self.surface.configure(&self.device, &self.config);
         }
+    }
+
+    fn build_bind_groups_layouts(device: &wgpu::Device) -> HashMap<BindScope, wgpu::BindGroupLayout> {
+        let mut layouts = HashMap::new();
+        let mut builder = bind_group_layout::Builder::new(device);
+        let mut layout: wgpu::BindGroupLayout;
+
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+
+        layout = builder.build("Camera Bind Group Layout");
+        layouts.insert(BindScope::Camera, layout);
+
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+
+        layout = builder.build("Map Bind Group Layout");
+        layouts.insert(BindScope::Map, layout);
+
+        layouts
+    }
+
+    fn build_pipelines(device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+        bind_group_layouts: &HashMap<BindScope, wgpu::BindGroupLayout>)
+        -> HashMap<PipelineType, wgpu::RenderPipeline> {
+
+        let mut pipelines = HashMap::new();
+        let mut builder = pipeline::Builder::new(device);
+        let mut pipeline: wgpu::RenderPipeline;
+        builder.set_shader_module("raycast.wgsl", "vs_main", "fs_main");
+        builder.set_pixel_format(config.format);
+        builder.add_bind_group_layout(&bind_group_layouts[&BindScope::Camera]);
+        builder.add_bind_group_layout(&bind_group_layouts[&BindScope::Map]);
+        pipeline = builder.build("Raycast Pipeline");
+        
+        pipelines.insert(PipelineType::Raycast, pipeline);
+
+        pipelines
+    }
+
+    pub fn update_camera(&mut self, cam_x: f32, cam_y: f32, cam_angle: f32) {
+        let dir_x = cam_angle.cos();
+        let dir_y = cam_angle.sin();
+
+        let fov_scale = 0.66;
+        let plane_x = -dir_y * fov_scale;
+        let plane_y = dir_x * fov_scale;
+
+        let camera_data:[f32; 8] =[
+            cam_x, cam_y,
+            dir_x, dir_y,
+            plane_x, plane_y,
+            self.config.width as f32, self.config.height as f32,
+        ];
+
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&camera_data),
+        );
+    }
+
+    pub fn update_map(&mut self, map_data: &[u32]) {
+
+        self.queue.write_buffer(
+            &self.map_buffer,
+            0,
+            bytemuck::cast_slice(map_data),
+        );
     }
 
     pub fn update_surface(&mut self) {

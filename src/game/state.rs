@@ -4,6 +4,7 @@ use crate::game::input::InputState;
 pub struct GameState {
     player: Player,
     pub input: InputState,
+    map: Vec<u32>,
 }
 
 impl GameState {
@@ -11,6 +12,16 @@ impl GameState {
         Self {
             player: Player::new(),
             input: InputState::new(),
+            map: vec![
+                1,1,1,1,1,1,1,1,
+                1,0,1,0,0,0,0,1,
+                1,0,1,0,0,0,0,1,
+                1,0,1,0,0,0,0,1,
+                1,0,0,0,0,0,0,1,
+                1,0,0,0,0,1,0,1,
+                1,0,0,0,0,0,0,1,
+                1,1,1,1,1,1,1,1,
+            ],
         }
     }
 
@@ -20,5 +31,10 @@ impl GameState {
 
     pub fn update(&mut self, delta_time: f32) {
         self.player.update(delta_time, &mut self.input);
+    }
+
+    pub fn camera_pose(&self) -> (f32, f32, f32) {
+        let (x, y) = self.player.position();
+        (x, y, self.player.angle())
     }
 }

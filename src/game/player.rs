@@ -14,8 +14,8 @@ pub struct Player {
 impl Player {
     pub fn new() -> Self {
         Self {
-            x: 0.0,
-            y: 0.0,
+            x: 300.0,
+            y: 300.0,
             angle: 0.0,
             delta_x: 0.0,
             delta_y: 0.0,
@@ -75,5 +75,13 @@ impl Player {
     fn calculate_delta(&mut self) {
         self.delta_x = self.angle.cos() * self.sensitivity as f32;
         self.delta_y = self.angle.sin() * self.sensitivity as f32;
+    }
+
+    pub fn position(&self) -> (f32, f32) {
+        (self.x, self.y)
+    }
+
+    pub fn angle(&self) -> f32 {
+        self.angle
     }
 }
