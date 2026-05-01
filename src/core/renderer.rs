@@ -1,10 +1,11 @@
 use std::sync::Arc;
 use winit::window::{Window};
-use crate::core::pipeline;
+use crate::core::backend::{pipeline,
+    bind_group_layout,
+    definitions::{PipelineType, BindScope}
+    };
 use wgpu::util::DeviceExt;
 use std::collections::HashMap;
-use crate::core::definitions::{PipelineType, BindScope};
-use crate::core::bind_group_layout;
 use crate::{MAX_MAP_TILES, TILE_SIZE, MAX_MAP_WIDTH, MAX_MAP_HEIGHT};
 
 const RENDER_WIDTH: u32 = 480;

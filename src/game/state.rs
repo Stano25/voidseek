@@ -30,7 +30,7 @@ impl GameState {
     }
 
     pub fn update(&mut self, delta_time: f32) {
-        self.player.update(delta_time, &mut self.input);
+        self.player.update(delta_time, &mut self.input, &self.map);
     }
 
     pub fn camera_pose(&self) -> (f32, f32, f32) {

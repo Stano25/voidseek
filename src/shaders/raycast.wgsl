@@ -117,9 +117,9 @@ fn fs_main(in: VertexPayload) -> @location(0) vec4<f32> {
     
     if (!hit) {
         if (in.uv.y < 0.5) {
-            return vec4<f32>(0.0, 1.0, 1.0, 1.0); // Cyan Strop z C++ kódu
+            return vec4<f32>(0.0, 1.0, 1.0, 1.0); // Cyan Strop
         } else {
-            return vec4<f32>(0.0, 0.0, 1.0, 1.0); // Modrá Podlaha z C++ kódu
+            return vec4<f32>(0.0, 0.0, 1.0, 1.0); // Modrá Podlaha 
         }
     }
 
@@ -132,7 +132,6 @@ fn fs_main(in: VertexPayload) -> @location(0) vec4<f32> {
     }
 
     // 8. Výpočet výšky čiary (wall line height) 
-    // Keďže rozlíšenie je Y=270, línia sa roztiahne presne tak, ako v C++ pri rozlíšení 320
     let line_height = camera.resolution.y / perp_wall_dist;
     
     let draw_start = -line_height / 2.0 + camera.resolution.y / 2.0;
@@ -146,9 +145,9 @@ fn fs_main(in: VertexPayload) -> @location(0) vec4<f32> {
     } else {
         // Pixel je vnútri steny! Zistíme, aká má byť farba podľa toho, z ktorej strany sme stenu trafili
         if (side == 0) {
-            return vec4<f32>(0.0, 0.8, 0.0, 1.0); // Zelená (Vertikálny zásah z C++)
+            return vec4<f32>(0.0, 0.8, 0.0, 1.0); // Zelená
         } else {
-            return vec4<f32>(0.0, 0.6, 0.0, 1.0); // Tmavšia Zelená (Horizontálny zásah z C++)
+            return vec4<f32>(0.0, 0.6, 0.0, 1.0); // Tmavšia Zelená
         }
     }
 }
