@@ -2,14 +2,15 @@ use std::sync::Arc;
 use winit::window::{Window};
 use crate::core::backend::{pipeline,
     bind_group_layout,
+    atlas,
     definitions::{PipelineType, BindScope}
     };
 use wgpu::util::DeviceExt;
 use std::collections::HashMap;
 use crate::{MAX_MAP_TILES, TILE_SIZE, MAX_MAP_WIDTH, MAX_MAP_HEIGHT};
 
-const RENDER_WIDTH: u32 = 480;
-const RENDER_HEIGHT: u32 = 270;
+const RENDER_WIDTH: u32 = 960;
+const RENDER_HEIGHT: u32 = 540;
 
 pub struct WgpuState {
     instance: wgpu::Instance,
@@ -25,11 +26,14 @@ pub struct WgpuState {
     
     camera_bind_group: wgpu::BindGroup,
     camera_buffer: wgpu::Buffer,
+    map_settings_buffer: wgpu::Buffer,
     map_bind_group: wgpu::BindGroup,
     map_buffer: wgpu::Buffer,
     
     offscreen_view: wgpu::TextureView,
+    atlas_view: wgpu::TextureView,
     blit_bind_group: wgpu::BindGroup,
+    atlas_bind_group: wgpu::BindGroup,
 }
 
 impl WgpuState {
@@ -126,6 +130,39 @@ impl WgpuState {
 
         let render_pipelines = Self::build_pipelines(&device, &config, offscreen_format, &bind_group_layouts);
         
+        let atlas_texture = Self::create_atlas_texture(&device, &queue, &config);
+
+        let atlas_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("Texture Array View"),
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+
+        let atlas_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Retro Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
+
+        let atlas_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Texture Array Bind Group"),
+            layout: &bind_group_layouts[&BindScope::AtlasTexture],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&atlas_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&atlas_sampler),
+                },
+            ],
+        });
         
         let camera_data:[f32; 8] =[0.0, 0.0, 1.0, 0.0, 0.0, 0.66, 800.0, 600.0]; 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -143,11 +180,19 @@ impl WgpuState {
             }],
         });
 
-        let mut map_data: Vec<u32> = vec![0; 3 + MAX_MAP_TILES as usize];
-        map_data[0] = MAX_MAP_WIDTH;
-        map_data[1] = MAX_MAP_HEIGHT;
-        map_data[2] = TILE_SIZE;
-        
+        let mut map_settings_data: [u32; 4] = [0; 4];
+        map_settings_data[0] = MAX_MAP_WIDTH;
+        map_settings_data[1] = MAX_MAP_HEIGHT;
+        map_settings_data[2] = TILE_SIZE;
+        map_settings_data[3] = 0; // Padding
+
+        let map_settings_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Map Settings Buffer"),
+            contents: bytemuck::cast_slice(&map_settings_data),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let map_data: [u32; (MAX_MAP_TILES*4) as usize] = [0; (MAX_MAP_TILES*4) as usize];
         let map_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Map Buffer"),
             contents: bytemuck::cast_slice(&map_data),
@@ -157,10 +202,16 @@ impl WgpuState {
         let map_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Map Bind Group"),
             layout: &bind_group_layouts[&BindScope::Map],
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: map_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0, // Zodpovedá @group(1) @binding(0) map_data
+                    resource: map_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1, // Zodpovedá @group(1) @binding(1) map_settings
+                    resource: map_settings_buffer.as_entire_binding(),
+                }
+            ],
         });
 
         Self {
@@ -175,10 +226,13 @@ impl WgpuState {
             bind_group_layouts,
             camera_bind_group,
             camera_buffer,
+            map_settings_buffer,
             map_bind_group,
             map_buffer,
             offscreen_view,
-            blit_bind_group
+            blit_bind_group,
+            atlas_view,
+            atlas_bind_group,
         }
     }
 
@@ -246,6 +300,7 @@ impl WgpuState {
             render_pass.set_pipeline(render_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_bind_group(1, &self.map_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.atlas_bind_group, &[]);
             render_pass.draw(0..3, 0..1);
             // Tu automaticky zanikne `render_pass` vďaka bloku {} a drop()
         }
@@ -319,9 +374,40 @@ impl WgpuState {
             count: None,
         });
 
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+
         layout = builder.build("Map Bind Group Layout");
         layouts.insert(BindScope::Map, layout);
 
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2Array,
+                multisampled: false,
+            },
+            count: None,
+        });
+        
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            count: None,
+        });
+
+        layout = builder.build("Atlas Bind Group Layout");
+        layouts.insert(BindScope::AtlasTexture, layout);
         
         builder.add_entry(wgpu::BindGroupLayoutEntry {
             binding: 0,
@@ -360,6 +446,7 @@ impl WgpuState {
         builder.set_pixel_format(offscreen_format);
         builder.add_bind_group_layout(&bind_group_layouts[&BindScope::Camera]);
         builder.add_bind_group_layout(&bind_group_layouts[&BindScope::Map]);
+        builder.add_bind_group_layout(&bind_group_layouts[&BindScope::AtlasTexture]); 
         pipeline = builder.build("Raycast Pipeline");
         
         pipelines.insert(PipelineType::Raycast, pipeline);
@@ -371,6 +458,14 @@ impl WgpuState {
         pipelines.insert(PipelineType::Blit, blit_builder.build("Blit Pipeline"));
 
         pipelines
+    }
+
+    fn create_atlas_texture(device: &wgpu::Device, queue: &wgpu::Queue, config: &wgpu::SurfaceConfiguration) -> wgpu::Texture {
+        let mut builder = atlas::Builder::new(device, queue);
+        builder.set_pixel_format(wgpu::TextureFormat::Rgba8UnormSrgb);
+        builder.set_texture_size(64,64);
+        builder.add_textures(&["Wall-Texture.png", "Floor-Texture.png", "Ceiling-Texture.png"]).expect("Failed to add textures to atlas");
+        builder.build("Atlas Texture")
     }
 
     pub fn update_camera(&mut self, cam_x: f32, cam_y: f32, cam_angle: f32) {
@@ -385,7 +480,7 @@ impl WgpuState {
             cam_x, cam_y,
             dir_x, dir_y,
             plane_x, plane_y,
-            self.config.width as f32, self.config.height as f32,
+            RENDER_WIDTH as f32, RENDER_HEIGHT as f32,
         ];
 
         self.queue.write_buffer(
@@ -398,7 +493,7 @@ impl WgpuState {
     pub fn update_map(&mut self, map_data: &[u32]) {
         self.queue.write_buffer(
         &self.map_buffer,
-        12,
+        0,
         bytemuck::cast_slice(map_data),
     );
     }

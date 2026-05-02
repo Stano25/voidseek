@@ -8,5 +8,6 @@ pub enum PipelineType {
 pub enum BindScope {
     Camera,
     Map,
+    AtlasTexture,
     BlitTexture,
 }

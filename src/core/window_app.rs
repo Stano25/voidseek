@@ -77,7 +77,7 @@ impl ApplicationHandler for WindowApp {
         self.renderer = Some(wgpu_state);
         
         if let Some(renderer) = &mut self.renderer {
-            renderer.update_map(self.game.get_map_data());
+            renderer.update_map(&self.game.get_map_data());
         }
     }
 

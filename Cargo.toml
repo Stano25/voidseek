@@ -8,6 +8,7 @@ winit = "0.30.13"
 wgpu = "29.0.1"
 pollster = "0.4.0"
 bytemuck = { version = "1.25.0", features = ["derive"] }
+image = "0.25.10"
 
 [profile.release]
 opt-level = 3         # Maximálna optimalizácia na rýchlosť (predvolené je 3, ale pre istotu).
