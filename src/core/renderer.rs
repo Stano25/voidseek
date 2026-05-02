@@ -12,9 +12,30 @@ use crate::{MAX_MAP_TILES, TILE_SIZE, MAX_MAP_WIDTH, MAX_MAP_HEIGHT};
 const RENDER_WIDTH: u32 = 960;
 const RENDER_HEIGHT: u32 = 540;
 
+struct CameraResources {
+    bind_group: wgpu::BindGroup,
+    buffer: wgpu::Buffer,
+}
+
+struct MapResources {
+    bind_group: wgpu::BindGroup,
+    data_buffer: wgpu::Buffer,
+    settings_buffer: wgpu::Buffer,
+}
+
+struct AtlasResources {
+    bind_group: wgpu::BindGroup,
+    texture_view: wgpu::TextureView,
+}
+
+struct BlitResources {
+    offscreen_texture: wgpu::TextureView,
+    bind_group: wgpu::BindGroup,
+}
+
 pub struct WgpuState {
     instance: wgpu::Instance,
-    pub surface: wgpu::Surface<'static>,
+    surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
@@ -23,17 +44,10 @@ pub struct WgpuState {
     render_pipelines: HashMap<PipelineType, wgpu::RenderPipeline>,
     bind_group_layouts: HashMap<BindScope, wgpu::BindGroupLayout>,
 
-    
-    camera_bind_group: wgpu::BindGroup,
-    camera_buffer: wgpu::Buffer,
-    map_settings_buffer: wgpu::Buffer,
-    map_bind_group: wgpu::BindGroup,
-    map_buffer: wgpu::Buffer,
-    
-    offscreen_view: wgpu::TextureView,
-    atlas_view: wgpu::TextureView,
-    blit_bind_group: wgpu::BindGroup,
-    atlas_bind_group: wgpu::BindGroup,
+    camera_resources: CameraResources,
+    map_resources: MapResources,
+    atlas_resources: AtlasResources,
+    blit_resources: BlitResources,
 }
 
 impl WgpuState {
@@ -58,13 +72,13 @@ impl WgpuState {
         };
         let adapter = instance.request_adapter(&adapter_descriptor).await.unwrap();
 
-        let divice_descriptor = wgpu::DeviceDescriptor {
+        let device_descriptor = wgpu::DeviceDescriptor {
             required_features: wgpu::Features::empty(),
             required_limits: wgpu::Limits::default(),
             label: Some("Device"),
             ..Default::default()
         };
-        let (device, queue) = adapter.request_device(&divice_descriptor).await.unwrap();
+        let (device, queue) = adapter.request_device(&device_descriptor).await.unwrap();
 
         let surface_capabilities = surface.get_capabilities(&adapter);
         let surface_format  = surface_capabilities.formats.iter()
@@ -86,7 +100,15 @@ impl WgpuState {
         surface.configure(&device, &config);
 
         // Vytvorenie offscreen textúry
-        let offscreen_format = wgpu::TextureFormat::Rgba8Unorm; // Formát pre našu malú textúru
+        let offscreen_format = wgpu::TextureFormat::Rgba8Unorm;
+
+        let bind_group_layouts = Self::build_bind_groups_layouts(&device);
+
+        let render_pipelines = Self::build_pipelines(&device, &config, offscreen_format, &bind_group_layouts);
+
+        // =====================================================================
+        // Inicializácia offscreen textúry a jej bind group
+        // =====================================================================
         let offscreen_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Offscreen Texture"),
             size: wgpu::Extent3d { width: RENDER_WIDTH, height: RENDER_HEIGHT, depth_or_array_layers: 1 },
@@ -97,9 +119,12 @@ impl WgpuState {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        let offscreen_view = offscreen_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Sampler s Nearest filtrom pre zachovanie ostrosti pixelov
+        let offscreen_view = offscreen_texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("Offscreen Texture View"),
+            ..Default::default()
+        });
+
         let offscreen_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Offscreen Sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -110,8 +135,6 @@ impl WgpuState {
             mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
-
-        let bind_group_layouts = Self::build_bind_groups_layouts(&device);
 
         let blit_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Blit Bind Group"),
@@ -128,9 +151,15 @@ impl WgpuState {
             ],
         });
 
-        let render_pipelines = Self::build_pipelines(&device, &config, offscreen_format, &bind_group_layouts);
-        
-        let atlas_texture = Self::create_atlas_texture(&device, &queue, &config);
+        let blit_resources = BlitResources {
+            offscreen_texture: offscreen_view,
+            bind_group: blit_bind_group,
+        };
+
+        // =====================================================================
+        // Inicializácia atlasu textúr
+        // =====================================================================
+        let atlas_texture = Self::create_atlas_texture(&device, &queue, wgpu::TextureFormat::Rgba8UnormSrgb);
 
         let atlas_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Texture Array View"),
@@ -163,8 +192,16 @@ impl WgpuState {
                 },
             ],
         });
-        
-        let camera_data:[f32; 8] =[0.0, 0.0, 1.0, 0.0, 0.0, 0.66, 800.0, 600.0]; 
+
+        let atlas_resources = AtlasResources {
+            bind_group: atlas_bind_group,
+            texture_view: atlas_view,
+        };
+
+        // =====================================================================
+        // Inicializácia kamery s defaultnými hodnotami
+        // =====================================================================
+        let camera_data:[f32; 8] =[0.0; 8]; 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
             contents: bytemuck::cast_slice(&camera_data),
@@ -180,11 +217,15 @@ impl WgpuState {
             }],
         });
 
-        let mut map_settings_data: [u32; 4] = [0; 4];
-        map_settings_data[0] = MAX_MAP_WIDTH;
-        map_settings_data[1] = MAX_MAP_HEIGHT;
-        map_settings_data[2] = TILE_SIZE;
-        map_settings_data[3] = 0; // Padding
+        let camera_resources = CameraResources {
+            bind_group: camera_bind_group,
+            buffer: camera_buffer,
+        };
+
+        // =====================================================================
+        // Inicializácia mapy s defaultnými hodnotami
+        // =====================================================================
+        let mut map_settings_data: [u32; 4] = [MAX_MAP_WIDTH, MAX_MAP_HEIGHT, TILE_SIZE, 0];
 
         let map_settings_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Map Settings Buffer"),
@@ -204,15 +245,21 @@ impl WgpuState {
             layout: &bind_group_layouts[&BindScope::Map],
             entries: &[
                 wgpu::BindGroupEntry {
-                    binding: 0, // Zodpovedá @group(1) @binding(0) map_data
+                    binding: 0,
                     resource: map_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 1, // Zodpovedá @group(1) @binding(1) map_settings
+                    binding: 1,
                     resource: map_settings_buffer.as_entire_binding(),
                 }
             ],
         });
+
+        let map_resources = MapResources {
+            bind_group: map_bind_group,
+            data_buffer: map_buffer,
+            settings_buffer: map_settings_buffer,
+        };
 
         Self {
             instance,
@@ -224,15 +271,10 @@ impl WgpuState {
             window,
             render_pipelines,
             bind_group_layouts,
-            camera_bind_group,
-            camera_buffer,
-            map_settings_buffer,
-            map_bind_group,
-            map_buffer,
-            offscreen_view,
-            blit_bind_group,
-            atlas_view,
-            atlas_bind_group,
+            camera_resources,
+            map_resources,
+            atlas_resources,
+            blit_resources,
         }
     }
 
@@ -258,31 +300,11 @@ impl WgpuState {
         };
         let mut command_encoder = self.device.create_command_encoder(&command_encoder_descriptor);
 
-        let color_attachment = wgpu::RenderPassColorAttachment {
-            view: &image_view,
-            resolve_target: None,
-            ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.1, g: 0.2, b: 0.3, a: 0.0 }),
-                store: wgpu::StoreOp::Store,
-            },
-            depth_slice: None,
-        };
-
-        let render_pass_descriptor = wgpu::RenderPassDescriptor {
-            label: Some("Render Pass"),
-            color_attachments: &[Some(color_attachment)],
-            depth_stencil_attachment: None,
-            occlusion_query_set: None,
-            timestamp_writes: None,
-            multiview_mask: None,
-        };
-
-        //Kreslíme Raycast do textury (offscreen_view)
         {
             let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Raycast Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.offscreen_view, // <--- ZMENA: Tu musí byť offscreen_view!
+                    view: &self.blit_resources.offscreen_texture,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -298,11 +320,10 @@ impl WgpuState {
 
             let render_pipeline = self.render_pipelines.get(&PipelineType::Raycast).unwrap();
             render_pass.set_pipeline(render_pipeline);
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.map_bind_group, &[]);
-            render_pass.set_bind_group(2, &self.atlas_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.camera_resources.bind_group, &[]);
+            render_pass.set_bind_group(1, &self.map_resources.bind_group, &[]);
+            render_pass.set_bind_group(2, &self.atlas_resources.bind_group, &[]);
             render_pass.draw(0..3, 0..1);
-            // Tu automaticky zanikne `render_pass` vďaka bloku {} a drop()
         }
 
         //Kreslíme texturu na okno
@@ -326,7 +347,7 @@ impl WgpuState {
 
             let blit_pipeline = self.render_pipelines.get(&PipelineType::Blit).unwrap();
             blit_pass.set_pipeline(blit_pipeline);
-            blit_pass.set_bind_group(0, &self.blit_bind_group, &[]);
+            blit_pass.set_bind_group(0, &self.blit_resources.bind_group, &[]);
             blit_pass.draw(0..3, 0..1);
         }
 
@@ -460,9 +481,9 @@ impl WgpuState {
         pipelines
     }
 
-    fn create_atlas_texture(device: &wgpu::Device, queue: &wgpu::Queue, config: &wgpu::SurfaceConfiguration) -> wgpu::Texture {
+    fn create_atlas_texture(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> wgpu::Texture {
         let mut builder = atlas::Builder::new(device, queue);
-        builder.set_pixel_format(wgpu::TextureFormat::Rgba8UnormSrgb);
+        builder.set_pixel_format(format);
         builder.set_texture_size(64,64);
         builder.add_textures(&["Wall-Texture.png", "Floor-Texture.png", "Ceiling-Texture.png"]).expect("Failed to add textures to atlas");
         builder.build("Atlas Texture")
@@ -484,7 +505,7 @@ impl WgpuState {
         ];
 
         self.queue.write_buffer(
-            &self.camera_buffer,
+            &self.camera_resources.buffer,
             0,
             bytemuck::cast_slice(&camera_data),
         );
@@ -492,13 +513,28 @@ impl WgpuState {
 
     pub fn update_map(&mut self, map_data: &[u32]) {
         self.queue.write_buffer(
-        &self.map_buffer,
+        &self.map_resources.data_buffer,
         0,
         bytemuck::cast_slice(map_data),
     );
     }
 
+    pub fn update_map_settings(&mut self, width: u32, height: u32, tile_size: u32) {
+        let mut map_settings_data: [u32; 4] = [0; 4];
+        map_settings_data[0] = width;
+        map_settings_data[1] = height;
+        map_settings_data[2] = tile_size;
+        map_settings_data[3] = 0; // Padding
+
+        self.queue.write_buffer(
+            &self.map_resources.settings_buffer,
+            0,
+            bytemuck::cast_slice(&map_settings_data),
+        );
+    }
+
     pub fn update_surface(&mut self) {
         self.surface = self.instance.create_surface(self.window.clone()).unwrap();
+        self.surface.configure(&self.device, &self.config);
     }
 }
