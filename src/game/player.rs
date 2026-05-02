@@ -1,9 +1,13 @@
 use crate::game::input::InputState;
 use crate::{TILE_SIZE, MAX_MAP_WIDTH, MAX_MAP_HEIGHT};
-use std::char::MAX;
 use std::f32::consts::PI;
 
 const PLAYER_RADIUS: f32 = 10.0;
+
+enum Axis {
+    X,
+    Y
+}
 
 pub struct Player {
     x: f32,
@@ -73,12 +77,10 @@ impl Player {
             move_x = (move_x / magnitude) * self.speed * delta_time;
             move_y = (move_y / magnitude) * self.speed * delta_time;
 
-            let (x_colided, y_colided) = self.is_wall(move_x, move_y, map);
-
-            if !x_colided {
+            if !self.is_wall(move_x, Axis::X, map) {
                 self.x += move_x;
             }
-            if !y_colided {
+            if !self.is_wall(move_y, Axis::Y, map) {
                 self.y += move_y;
             }
         }
@@ -103,49 +105,52 @@ impl Player {
         self.delta_y = self.angle.sin();
     }
 
-    fn is_wall(&self, velocity_x: f32, velocity_y: f32, map: &[u32]) -> (bool, bool) {
-        let center_x = (self.x + velocity_x)/TILE_SIZE as f32;
-        let center_y = (self.y + velocity_y)/TILE_SIZE as f32;
+    fn is_wall(&self, velocity: f32, axis: Axis, map: &[u32]) -> bool {
+        let inverted_size = 1.0 / TILE_SIZE as f32;
 
-        let player_radius = PLAYER_RADIUS / TILE_SIZE as f32;
+        let player_rad = PLAYER_RADIUS * inverted_size;
 
-        let x_pos = self.x / TILE_SIZE as f32;
-        let y_pos = self.y / TILE_SIZE as f32;
+        let old_x = self.x * inverted_size;
+        let old_y = self.y * inverted_size;
 
-        let mut x_colided = false;
-        let mut y_colided = false;
+        let check_sphere = |x_pos: f32, y_pos: f32| -> bool {
+            let min_x = (x_pos - player_rad).floor() as i32;
+            let max_x = (x_pos + player_rad).floor() as i32;
+            let min_y = (y_pos - player_rad).floor() as i32;
+            let max_y = (y_pos + player_rad).floor() as i32;
 
-        for x in (center_x-player_radius).floor() as i32..(center_x+player_radius).ceil() as i32 {
-            for y in (y_pos-player_radius).floor() as i32..(y_pos+player_radius).ceil() as i32 {
-                if x < 0 || x >= (MAX_MAP_WIDTH * TILE_SIZE) as i32 || y < 0 || y >= (MAX_MAP_HEIGHT * TILE_SIZE) as i32 {
-                    continue;
-                }
+            for x in min_x..=max_x {
+                for y in min_y..=max_y{
+                    if x < 0 || x >= MAX_MAP_WIDTH as i32 || y < 0 || y >= MAX_MAP_HEIGHT as i32 {
+                        return true; // Ak sa hráč pokúša ísť mimo mapy
+                    }
 
-                let map_x = x as usize;
-                let map_y = y as usize;
-                let map_index = map_y * MAX_MAP_WIDTH as usize + map_x;
-                if let Some(&tile) = map.get(map_index) && tile != 0{
-                    x_colided = true;
-                }
-            }
-        }
-
-        for x in (x_pos-player_radius).floor() as i32..(x_pos+player_radius).ceil() as i32 {
-            for y in (center_y-player_radius).floor() as i32..(center_y+player_radius).ceil() as i32 {
-                if x < 0 || x >= (MAX_MAP_WIDTH * TILE_SIZE) as i32 || y < 0 || y >= (MAX_MAP_HEIGHT * TILE_SIZE) as i32 {
-                    continue;
-                }
-
-                let map_x = x as usize;
-                let map_y = y as usize;
-                let map_index = map_y * MAX_MAP_WIDTH as usize + map_x;
-                if let Some(&tile) = map.get(map_index) && tile != 0{
-                    y_colided = true;
+                    let map_index = (y as usize) * MAX_MAP_WIDTH as usize + (x as usize);
+                    if let Some(&tile) = map.get(map_index) {
+                        if tile != 0 {
+                            return true;
+                        }
+                    }
                 }
             }
+
+            false
+        };
+
+        if velocity != 0.0 {
+            match axis {
+                Axis::X => {
+                    let new_x = (self.x + velocity) * inverted_size;
+                    check_sphere(new_x, old_y)
+                }
+                Axis::Y => {
+                    let new_y = (self.y + velocity) * inverted_size;
+                    check_sphere(old_x, new_y)
+                }
+            }
+        } else {
+            false
         }
-        
-        (x_colided, y_colided)
     }
 
     pub fn position(&self) -> (f32, f32) {

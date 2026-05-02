@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use winit::event_loop::{ControlFlow, EventLoop};
 use game::state::GameState;
 
