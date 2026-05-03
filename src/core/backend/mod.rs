@@ -3,3 +3,4 @@ pub mod definitions;
 pub mod pipeline;
 pub mod atlas;
 pub mod texture;
+pub mod compute_pipeline;

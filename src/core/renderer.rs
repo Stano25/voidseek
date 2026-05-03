@@ -1,9 +1,10 @@
 use std::sync::Arc;
 use winit::window::{Window};
 use crate::core::backend::{pipeline,
+    compute_pipeline,
     bind_group_layout,
     atlas,
-    definitions::{PipelineType, BindScope},
+    definitions::{RenderPipelineType, ComputePipelineType, BindScope},
     texture::{new_offscreen_texture}
     };
 use wgpu::util::DeviceExt;
@@ -42,13 +43,16 @@ pub struct WgpuState {
     config: wgpu::SurfaceConfiguration,
     size: (u32, u32),
     window: Arc<Window>,
-    render_pipelines: HashMap<PipelineType, wgpu::RenderPipeline>,
+    render_pipelines: HashMap<RenderPipelineType, wgpu::RenderPipeline>,
+    compute_pipelines: HashMap<ComputePipelineType, wgpu::ComputePipeline>,
     bind_group_layouts: HashMap<BindScope, wgpu::BindGroupLayout>,
-
     camera_resources: CameraResources,
     map_resources: MapResources,
     atlas_resources: AtlasResources,
     blit_resources: BlitResources,
+    compute_bind_group: wgpu::BindGroup,
+    ray_hits_bind_group: wgpu::BindGroup,
+    ray_hits_buffer: wgpu::Buffer,
 }
 
 impl WgpuState {
@@ -105,8 +109,9 @@ impl WgpuState {
 
         let bind_group_layouts = Self::build_bind_groups_layouts(&device);
 
-        let render_pipelines = Self::build_pipelines(&device, &config, offscreen_format, &bind_group_layouts);
+        let render_pipelines = Self::build_render_pipelines(&device, &config, offscreen_format, &bind_group_layouts);
 
+        let compute_pipelines = Self::build_compute_pipelines(&device, &bind_group_layouts);
         // =====================================================================
         // Inicializácia offscreen textúry a jej bind group
         // =====================================================================
@@ -174,6 +179,13 @@ impl WgpuState {
             texture_view: atlas_view,
         };
 
+        let ray_hits_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Ray Hits Buffer"),
+            size: (RENDER_WIDTH * 16) as u64,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+
         // =====================================================================
         // Inicializácia kamery s defaultnými hodnotami
         // =====================================================================
@@ -231,11 +243,30 @@ impl WgpuState {
             ],
         });
 
+        let ray_hits_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Ray Hits Bind Group"),
+            layout: &bind_group_layouts[&BindScope::RayHits],
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: ray_hits_buffer.as_entire_binding() },
+            ],
+        });
+
         let map_resources = MapResources {
             bind_group: map_bind_group,
             data_buffer: map_buffer,
             settings_buffer: map_settings_buffer,
         };
+
+        let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Compute Bind Group"),
+            layout: &bind_group_layouts[&BindScope::ComputeRayHits],
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: camera_resources.buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: map_resources.settings_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: map_resources.data_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: ray_hits_buffer.as_entire_binding() },
+            ],
+        });
 
         Self {
             instance,
@@ -251,6 +282,10 @@ impl WgpuState {
             map_resources,
             atlas_resources,
             blit_resources,
+            compute_pipelines,
+            ray_hits_buffer,
+            ray_hits_bind_group,
+            compute_bind_group,
         }
     }
 
@@ -277,6 +312,19 @@ impl WgpuState {
         let mut command_encoder = self.device.create_command_encoder(&command_encoder_descriptor);
 
         {
+            let mut compute_pass = command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Raycast Compute Pass"),
+                timestamp_writes: None,
+            });
+
+            compute_pass.set_pipeline(&self.compute_pipelines[&ComputePipelineType::Raycast]);
+            compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
+
+            let dispatch_count = (RENDER_WIDTH + 63) / 64;
+            compute_pass.dispatch_workgroups(dispatch_count, 1, 1);
+        }
+
+        {
             let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Raycast Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -294,11 +342,12 @@ impl WgpuState {
                 multiview_mask: None,
             });
 
-            let render_pipeline = self.render_pipelines.get(&PipelineType::Raycast).unwrap();
+            let render_pipeline = self.render_pipelines.get(&RenderPipelineType::Raycast).unwrap();
             render_pass.set_pipeline(render_pipeline);
             render_pass.set_bind_group(0, &self.camera_resources.bind_group, &[]);
             render_pass.set_bind_group(1, &self.map_resources.bind_group, &[]);
             render_pass.set_bind_group(2, &self.atlas_resources.bind_group, &[]);
+            render_pass.set_bind_group(3, &self.ray_hits_bind_group, &[]);
             render_pass.draw(0..3, 0..1);
         }
 
@@ -321,7 +370,7 @@ impl WgpuState {
                 multiview_mask: None,
             });
 
-            let blit_pipeline = self.render_pipelines.get(&PipelineType::Blit).unwrap();
+            let blit_pipeline = self.render_pipelines.get(&RenderPipelineType::Blit).unwrap();
             blit_pass.set_pipeline(blit_pipeline);
             blit_pass.set_bind_group(0, &self.blit_resources.bind_group, &[]);
             blit_pass.draw(0..3, 0..1);
@@ -427,32 +476,89 @@ impl WgpuState {
         layout = builder.build("Blit Bind Group Layout");
         layouts.insert(BindScope::BlitTexture, layout);
 
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+        layout = builder.build("Ray Hits Fragment Layout");
+        layouts.insert(BindScope::RayHits, layout);
+
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+        binding: 0,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+        });
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 2,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 3,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: false },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+        layout = builder.build("Compute Ray Hits Layout");
+        layouts.insert(BindScope::ComputeRayHits, layout);
+
         layouts
     }
 
-    fn build_pipelines(device: &wgpu::Device,
+    fn build_render_pipelines(device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         offscreen_format: wgpu::TextureFormat,
         bind_group_layouts: &HashMap<BindScope, wgpu::BindGroupLayout>)
-        -> HashMap<PipelineType, wgpu::RenderPipeline> {
+        -> HashMap<RenderPipelineType, wgpu::RenderPipeline> {
 
         let mut pipelines = HashMap::new();
         let mut builder = pipeline::Builder::new(device);
         let mut pipeline: wgpu::RenderPipeline;
-        builder.set_shader_module("raycast.wgsl", "vs_main", "fs_main");
+        builder.set_shader_module("raycast_retro.wgsl", "vs_main", "fs_main");
         builder.set_pixel_format(offscreen_format);
         builder.add_bind_group_layout(&bind_group_layouts[&BindScope::Camera]);
         builder.add_bind_group_layout(&bind_group_layouts[&BindScope::Map]);
         builder.add_bind_group_layout(&bind_group_layouts[&BindScope::AtlasTexture]); 
+        builder.add_bind_group_layout(&bind_group_layouts[&BindScope::RayHits]);
         pipeline = builder.build("Raycast Pipeline");
         
-        pipelines.insert(PipelineType::Raycast, pipeline);
+        pipelines.insert(RenderPipelineType::Raycast, pipeline);
 
         let mut blit_builder = pipeline::Builder::new(device);
         blit_builder.set_shader_module("blit.wgsl", "vs_main", "fs_main");
         blit_builder.set_pixel_format(config.format);
         blit_builder.add_bind_group_layout(&bind_group_layouts[&BindScope::BlitTexture]);
-        pipelines.insert(PipelineType::Blit, blit_builder.build("Blit Pipeline"));
+        pipelines.insert(RenderPipelineType::Blit, blit_builder.build("Blit Pipeline"));
 
         pipelines
     }
@@ -462,6 +568,16 @@ impl WgpuState {
         builder.set_pixel_format(format);
         builder.add_textures(&["Wall-Texture.png", "Floor-Texture.png", "Ceiling-Texture.png"]).expect("Failed to add textures to atlas");
         builder.build("Atlas Texture")
+    }
+
+    fn build_compute_pipelines(device: &wgpu::Device, bind_group_layouts: &HashMap<BindScope, wgpu::BindGroupLayout>) -> HashMap<ComputePipelineType, wgpu::ComputePipeline> {
+        let mut compute_pipelines = HashMap::new();
+        let mut builder = compute_pipeline::Builder::new(device);
+        builder.set_shader_module("raycast_compute.wgsl", "cs_main");
+        builder.add_bind_group_layout(&bind_group_layouts[&BindScope::ComputeRayHits]);
+        let pipeline = builder.build("Raycast Compute Pipeline");
+        compute_pipelines.insert(ComputePipelineType::Raycast, pipeline);
+        compute_pipelines
     }
 
     pub fn update_camera(&mut self, cam_x: f32, cam_y: f32, cam_angle: f32) {
