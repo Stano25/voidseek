@@ -3,7 +3,8 @@ use winit::window::{Window};
 use crate::core::backend::{pipeline,
     bind_group_layout,
     atlas,
-    definitions::{PipelineType, BindScope}
+    definitions::{PipelineType, BindScope},
+    texture::{new_offscreen_texture}
     };
 use wgpu::util::DeviceExt;
 use std::collections::HashMap;
@@ -109,32 +110,7 @@ impl WgpuState {
         // =====================================================================
         // Inicializácia offscreen textúry a jej bind group
         // =====================================================================
-        let offscreen_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Offscreen Texture"),
-            size: wgpu::Extent3d { width: RENDER_WIDTH, height: RENDER_HEIGHT, depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: offscreen_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-
-        let offscreen_view = offscreen_texture.create_view(&wgpu::TextureViewDescriptor {
-            label: Some("Offscreen Texture View"),
-            ..Default::default()
-        });
-
-        let offscreen_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Offscreen Sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-            ..Default::default()
-        });
+        let (offscreen_view, offscreen_sampler) = new_offscreen_texture(&device, RENDER_WIDTH, RENDER_HEIGHT, offscreen_format);
 
         let blit_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Blit Bind Group"),
@@ -484,7 +460,6 @@ impl WgpuState {
     fn create_atlas_texture(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> wgpu::Texture {
         let mut builder = atlas::Builder::new(device, queue);
         builder.set_pixel_format(format);
-        builder.set_texture_size(64,64);
         builder.add_textures(&["Wall-Texture.png", "Floor-Texture.png", "Ceiling-Texture.png"]).expect("Failed to add textures to atlas");
         builder.build("Atlas Texture")
     }

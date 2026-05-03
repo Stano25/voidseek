@@ -75,6 +75,7 @@ impl ApplicationHandler for WindowApp {
         // Inicializácia WgpuState cez pollster (asynchrónna operácia v synchrónnom kontexte)
         let wgpu_state = pollster::block_on(WgpuState::new(window));
         self.renderer = Some(wgpu_state);
+    
         
         if let Some(renderer) = &mut self.renderer {
             renderer.update_map(&self.game.get_map_data());

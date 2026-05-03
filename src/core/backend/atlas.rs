@@ -23,33 +23,34 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn add_textures(&mut self,folder_name: &[&str]) -> Result<(), String> {
-        self.layers = folder_name.len() as u32;
-
-        for name in folder_name {
-            let mut filepath = current_dir().unwrap();
+    pub fn add_textures(&mut self,names: &[&str]) -> Result<(), String> {
+        self.layers = names.len() as u32;
+        
+        for (i, name) in names.iter().enumerate() {
+            let mut filepath = current_dir().map_err(|e| format!("Failed to get current directory: {}", e))?;
             filepath.push("src");
             filepath.push("assets");
             filepath.push(name);
             
             let img = image::open(filepath).map_err(|e| format!("Failed to open image: {}", e))?.to_rgba8();
-
-            assert_eq!(
-            img.dimensions(),
-            (self.texture_width, self.texture_height),
-            "Image {} does not have a {}x{} resolution!", name, self.texture_width, self.texture_height
-            );
-
+            
+            if i == 0 {
+                // Prvý obrázok nastaví referenčné rozmery
+                let (w, h) = img.dimensions();
+                self.texture_width = w;
+                self.texture_height = h;
+            } else {
+                assert_eq!(
+                    img.dimensions(),
+                    (self.texture_width, self.texture_height),
+                    "Image {} má zlé rozmery!", name
+                );
+            }
+            
             self.rgba_data.extend_from_slice(img.as_raw());
         }
         Ok(())
     }
-
-    pub fn set_texture_size(&mut self, width: u32, height: u32) {
-        self.texture_width = width;
-        self.texture_height = height;
-    }
-
     pub fn set_pixel_format(&mut self, pixel_format: wgpu::TextureFormat) {
         self.pixel_format = pixel_format;
     }

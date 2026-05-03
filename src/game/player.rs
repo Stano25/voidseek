@@ -27,7 +27,7 @@ impl Player {
             angle: 0.0,
             delta_x: 0.0,
             delta_y: 0.0,
-            speed: 75.0,
+            speed: 125.0,
             sensitivity: 0.0015,
         }
     }
