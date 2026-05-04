@@ -1,24 +1,24 @@
 struct Camera {
-    position: vec2<f32>,
-    direction: vec2<f32>,
-    plane: vec2<f32>,
+    position:   vec2<f32>,
+    direction:  vec2<f32>,
+    plane:      vec2<f32>,
     resolution: vec2<f32>,
 }
 
 struct MapSettings {
-    width: u32,
-    height: u32,
-    tile_size: u32,
+    width:      u32,
+    height:     u32,
+    tile_size:  u32,
     
-    _padding: u32, 
+    _padding:   u32, 
 }
 
 struct Tile {
-    wall_texture_id: u32,
-    floor_texture_id: u32,
+    wall_texture_id:    u32,
+    floor_texture_id:   u32,
     ceiling_texture_id: u32,
     
-    _padding: u32,
+    _padding:           u32,
 }
 
 struct RayHit {
