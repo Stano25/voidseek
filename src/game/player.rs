@@ -22,8 +22,8 @@ pub struct Player {
 impl Player {
     pub fn new() -> Self {
         Self {
-            x: 300.0,
-            y: 300.0,
+            x: 96.0,
+            y: 96.0,
             angle: 0.0,
             delta_x: 0.0,
             delta_y: 0.0,

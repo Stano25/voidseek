@@ -6,11 +6,10 @@ struct Camera {
 }
 
 struct MapSettings {
-    width:      u32,
-    height:     u32,
-    tile_size:  u32,
-    
-    _padding:   u32, 
+    width:             u32,
+    height:            u32,
+    tile_size:         u32,
+    render_distance:   u32, 
 }
 
 struct Tile {
@@ -49,6 +48,8 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let x = global_id.x;
     if (x >= u32(camera.resolution.x)) { return; }
 
+    let render_distance = map_settings.render_distance*2; // Pridáme 1, aby sme zahrnuli aj tile, na ktorej je kamera
+
     let camera_x = 2.0 * f32(x) / camera.resolution.x - 1.0; // Zisti kde sa nachádza x pixel v zornom poli (-1 až 1)
     let ray_dir = camera.direction + camera.plane * camera_x; // Zisti smer lúča pre tento pixel
 
@@ -83,7 +84,7 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var side = 0;
     var hit_wall_tex_id = 0u;
 
-    for (var i = 0; i < 50; i++) {
+    for (var i: u32 = 0; i < render_distance; i++) {
         if (side_dist.x < side_dist.y) { // Posuneme sa na dalsiu tile podla toho ktora je bližšie
             side_dist.x += delta_dist.x;
             map_pos.x += step_dir.x;

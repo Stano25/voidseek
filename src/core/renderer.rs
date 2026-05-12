@@ -213,7 +213,7 @@ impl WgpuState {
         // =====================================================================
         // Inicializácia mapy s defaultnými hodnotami
         // =====================================================================
-        let mut map_settings_data: [u32; 4] = [MAX_MAP_WIDTH, MAX_MAP_HEIGHT, TILE_SIZE, 0];
+        let mut map_settings_data: [u32; 4] = [MAX_MAP_WIDTH, MAX_MAP_HEIGHT, TILE_SIZE, 5];
 
         let map_settings_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Map Settings Buffer"),
@@ -610,12 +610,12 @@ impl WgpuState {
     );
     }
 
-    pub fn update_map_settings(&mut self, width: u32, height: u32, tile_size: u32) {
+    pub fn update_map_settings(&mut self, width: u32, height: u32, tile_size: u32, render_distance: u32) {
         let mut map_settings_data: [u32; 4] = [0; 4];
         map_settings_data[0] = width;
         map_settings_data[1] = height;
         map_settings_data[2] = tile_size;
-        map_settings_data[3] = 0; // Padding
+        map_settings_data[3] = render_distance;
 
         self.queue.write_buffer(
             &self.map_resources.settings_buffer,

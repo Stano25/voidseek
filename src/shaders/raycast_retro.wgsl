@@ -8,7 +8,7 @@ struct MapSettings {
     width: u32,
     height: u32,
     tile_size: u32,
-    _padding: u32, 
+    render_distance: u32, 
 }
 struct Tile {
     wall_texture_id: u32,
@@ -75,26 +75,28 @@ fn fs_main(in: VertexPayload) -> @location(0) vec4<f32> {
     let draw_start  = floor(raw_draw_start);
     let draw_end    = ceil(line_height / 2.0 + camera.resolution.y / 2.0);
 
-    // --- OPRAVA: Presná synchronizácia uhla lúča s Compute Shaderom ---
-    // Namiesto in.uv.x použijeme prepočítané 'x', aby sa lúče na 100% zhodovali
     let camera_x = 2.0 * f32(x) / camera.resolution.x - 1.0;
     
     let ray_dir  = camera.direction + camera.plane * camera_x;
     let ray_pos  = camera.position / f32(map_settings.tile_size);
     let aspect_fix = 1.3333;
 
+    // --- PRIDANÉ: Ukladanie výsledkov pre neskoršiu úpravu svetla ---
+    var final_color = vec4<f32>(0.0, 0.0, 0.0, 1.0); // Predvolená farba (čierna)
+    var pixel_distance: f32 = 0.0;                   // Vzdialenosť konkrétneho pixelu
+
     if (frag_y_pixels < draw_start) {
         // --- STROP ---
         let p = (camera.resolution.y / 2.0) - frag_y_pixels;
         var row_dist = (camera.resolution.y * aspect_fix / 2.0) / p;
 
-        // Bezpečnostná poistka: Strop nikdy nesmie zájsť za bod, kde sme narazili na stenu
         if (hit == 1u) {
             row_dist = min(row_dist, hit_data.distance - 0.001);
         }
-
+        
+        pixel_distance = row_dist; // Uložíme vzdialenosť stropu
+        
         let floor_pos = ray_pos + row_dist * ray_dir;
-
         let map_x = i32(floor(floor_pos.x));
         let map_y = i32(floor(floor_pos.y));
 
@@ -110,23 +112,26 @@ fn fs_main(in: VertexPayload) -> @location(0) vec4<f32> {
                 let atlas_layer = i32(tile.ceiling_texture_id) - 1;
                 let color = textureSampleLevel(texture_atlas, texture_sampler,
                     vec2<f32>(tex_x, tex_y), atlas_layer, 0.0);
-                return vec4<f32>(color.rgb * 0.5, 1.0);
+                final_color = vec4<f32>(color.rgb * 0.5, 1.0);
+            } else {
+                final_color = vec4<f32>(0.1, 0.1, 0.1, 1.0);
             }
+        } else {
+            final_color = vec4<f32>(0.1, 0.1, 0.1, 1.0);
         }
-        return vec4<f32>(0.1, 0.1, 0.1, 1.0);
 
     } else if (frag_y_pixels > draw_end) {
         // --- PODLAHA ---
         let p = frag_y_pixels - (camera.resolution.y / 2.0);
         var row_dist = (camera.resolution.y * aspect_fix / 2.0) / p;
 
-        // Bezpečnostná poistka pre podlahu
         if (hit == 1u) {
             row_dist = min(row_dist, hit_data.distance - 0.001);
         }
 
+        pixel_distance = row_dist; // Uložíme vzdialenosť podlahy
+        
         let floor_pos = ray_pos + row_dist * ray_dir;
-
         let map_x = i32(floor(floor_pos.x));
         let map_y = i32(floor(floor_pos.y));
 
@@ -142,27 +147,40 @@ fn fs_main(in: VertexPayload) -> @location(0) vec4<f32> {
                 let atlas_layer = i32(tile.floor_texture_id) - 1;
                 let color = textureSampleLevel(texture_atlas, texture_sampler,
                     vec2<f32>(tex_x, tex_y), atlas_layer, 0.0);
-                return vec4<f32>(color.rgb * 0.7, 1.0);
+                final_color = vec4<f32>(color.rgb * 0.7, 1.0);
+            } else {
+                final_color = vec4<f32>(0.2, 0.2, 0.2, 1.0);
             }
+        } else {
+            final_color = vec4<f32>(0.2, 0.2, 0.2, 1.0);
         }
-        return vec4<f32>(0.2, 0.2, 0.2, 1.0);
 
     } else {
         // --- STENA ---
-        if (hit == 0u) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
+        pixel_distance = hit_data.distance; // Uložíme vzdialenosť steny
 
-        let tex_x = hit_data.wall_x;
-        
-        // Na stenu použijeme nezaokrúhlený raw_draw_start, aby textúra neskákala o 1 pixel
-        let tex_y = clamp((frag_y_pixels - raw_draw_start) / line_height, 0.0, 1.0);
-        let atlas_layer = i32(tex_id) - 1;
+        if (hit == 1u) { 
+            let tex_x = hit_data.wall_x;
+            let tex_y = clamp((frag_y_pixels - raw_draw_start) / line_height, 0.0, 1.0);
+            let atlas_layer = i32(tex_id) - 1;
 
-        var color = textureSampleLevel(texture_atlas, texture_sampler,
-            vec2<f32>(tex_x, tex_y), atlas_layer, 0.0);
+            var color = textureSampleLevel(texture_atlas, texture_sampler,
+                vec2<f32>(tex_x, tex_y), atlas_layer, 0.0);
 
-        if (side == 1u) {
-            color = vec4<f32>(color.rgb * 0.35, color.a);
+            if (side == 1u) {
+                color = vec4<f32>(color.rgb * 0.35, color.a);
+            }
+            final_color = color;
         }
-        return color;
     }
+
+    // --- VÝPOČET TMY (FADE TO BLACK) ---
+    let render_dist = f32(map_settings.render_distance);
+    
+    // Intenzita stmavovania: 1.0 = sme pri kamere, 0.0 = sme za hranicou vykresľovania
+    let intensity = clamp(1.0 - (pixel_distance / render_dist), 0.0, 1.0);
+
+    // Výsledná farba sa vynásobí intenzitou. 
+    // Keďže je za hranicou vzdialenosti intensity 0.0, pixel bude čistá tma (čierna).
+    return vec4<f32>(final_color.rgb * intensity, final_color.a);
 }
