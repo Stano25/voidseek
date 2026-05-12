@@ -177,10 +177,12 @@ fn fs_main(in: VertexPayload) -> @location(0) vec4<f32> {
     // --- VÝPOČET TMY (FADE TO BLACK) ---
     let render_dist = f32(map_settings.render_distance);
     
+    // Týmto dosiahneme kruhový fog, ktorý sa na okrajoch obrazovky nevzďaľuje
+    let true_distance = pixel_distance * length(ray_dir);
+    
     // Intenzita stmavovania: 1.0 = sme pri kamere, 0.0 = sme za hranicou vykresľovania
-    let intensity = clamp(1.0 - (pixel_distance / render_dist), 0.0, 1.0);
+    let intensity = clamp(1.0 - (true_distance / render_dist), 0.0, 1.0);
 
     // Výsledná farba sa vynásobí intenzitou. 
-    // Keďže je za hranicou vzdialenosti intensity 0.0, pixel bude čistá tma (čierna).
     return vec4<f32>(final_color.rgb * intensity, final_color.a);
 }
