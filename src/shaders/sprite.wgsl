@@ -38,7 +38,7 @@ struct VertexOutput {
     @location(0) uv: vec2<f32>,
     @location(1) atlas_index: f32,
     @location(2) sprite_distance: f32,
-    @location(3) true_distance: f32,
+    @location(3) logical_x: f32, 
 }
 
 @vertex
@@ -49,17 +49,14 @@ fn vs_main(
     let sprite = sprites[instance_index];
     
     // Transformovať sprite pozíciu vzhľadom ku kamere (Kamera je v (0,0) a my počítame rozdiel)
-    let sprite_x = sprite.position.x - (camera.position.x / f32(64.0)); // Predpokladám map_settings.tile_size = 64
-    let sprite_y = sprite.position.y - (camera.position.y / f32(64.0)); 
+    let sprite_pos = sprite.position.xy - (camera.position / f32(map_settings.tile_size));
     let sprite_z = sprite.position.z;
 
     // Transformácia do kamerového priestoru (Násobenie inverznou kamerovou maticou)
-    // Tvoja kamera z raycast_compute robila výpočet lúčov pomocou direction a plane.
-    // Inverzný determinant matice (camera.plane.x * camera.direction.y - camera.direction.x * camera.plane.y)
     let inv_det = 1.0 / (camera.plane.x * camera.direction.y - camera.direction.x * camera.plane.y);
 
-    let transform_x = inv_det * (camera.direction.y * sprite_x - camera.direction.x * sprite_y);
-    let transform_y = inv_det * (-camera.plane.y * sprite_x + camera.plane.x * sprite_y); // Toto je hĺbka!
+    let transform_x = inv_det * (camera.direction.y * sprite_pos.x - camera.direction.x * sprite_pos.y);
+    let transform_y = inv_det * (-camera.plane.y * sprite_pos.x + camera.plane.x * sprite_pos.y); // Toto je hĺbka!
 
     // Ak je sprite za nami (transform_y <= 0), posunieme ho preč (bude orezaný GPU)
     if (transform_y <= 0.0) {
@@ -72,13 +69,12 @@ fn vs_main(
     let sprite_screen_x = i32((camera.resolution.x / 2.0) * (1.0 + transform_x / transform_y));
 
     // Vypočítame veľkosť spritu (šírku a výšku) na základe vzdialenosti
-    // aspect_fix mame 1.3333 pre retro styl
     let sprite_scale = abs((camera.resolution.y * 1.3333) / transform_y) * sprite.scale;
     
     // Tvorba billboarovaného štvorca zo 6 vrcholov
     var uv_coords = array<vec2<f32>, 6>(
-        vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 0.0), // Prvý trojuholník
-        vec2<f32>(1.0, 1.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 0.0)  // Druhý trojuholník
+        vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 0.0),
+        vec2<f32>(1.0, 1.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 0.0) 
     );
     let uv = uv_coords[vertex_index];
     
@@ -91,17 +87,31 @@ fn vs_main(
     let ndc_y = 1.0 - (pixel_y / camera.resolution.y) * 2.0;
 
     var out: VertexOutput;
-    out.position = vec4<f32>(ndc_x, ndc_y, 0.5, 1.0); // 0.5 pre fixnú hlbku v z-bufferi pre wgpu
+    out.position = vec4<f32>(ndc_x, ndc_y, 0.5, 1.0);
     out.uv = uv;
     out.atlas_index = f32(sprite.atlas_index);
-    out.sprite_distance = transform_y; // Skutočná kolmá vzdialenosť (rovnako ako dĺžka steny)
-    out.true_distance = length(vec2<f32>(sprite_x, sprite_y)); // Pridaná presná vzdialenosť pre fog
+    out.sprite_distance = transform_y;
+    out.logical_x = pixel_x;
 
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // 1. Získame náš logický herný stĺpec a prehodíme ho na celé číslo. 
+    let screen_x = i32(in.logical_x);
+    
+    // 2. Prečítame dáta iba ak sme presne v našom hernom okne
+    if (screen_x >= 0 && screen_x < i32(camera.resolution.x)) {
+        let hit_data = ray_hits[screen_x];
+        let hit = (hit_data.packed) & 0x1u; 
+        
+        // 3. Odrezanie spritu, ak je hlbšie ako stena (1D Z-Buffer)
+        if (hit == 1u && in.sprite_distance > hit_data.distance) {
+            discard; 
+        }
+    }
+
     let color = textureSampleLevel(
         texture_atlas, 
         texture_sampler,
@@ -114,8 +124,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
 
-    let render_dist = 5.0;
-    let intensity = clamp(1.0 - (in.true_distance / render_dist), 0.0, 1.0);
+    // Prepočítame smer lúča pre toto konkrétne logické X na obrazovke
+    let camera_x = 2.0 * f32(screen_x) / camera.resolution.x - 1.0;
+    let ray_dir = camera.direction + camera.plane * camera_x;
+    
+    // Vynásobíme kolmú vzdialenosť spritu dĺžkou tohto konkrétneho lúča
+    let per_pixel_distance = in.sprite_distance * length(ray_dir);
+
+    let render_dist = f32(map_settings.render_distance);
+    let intensity = clamp(1.0 - (per_pixel_distance / render_dist), 0.0, 1.0);
 
     return vec4<f32>(color.rgb * intensity, color.a);
 }

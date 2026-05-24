@@ -49,14 +49,9 @@ impl GameState {
             ],
             sprites: vec![
                 Sprite {
-                    position: Vec3(1.5, 5.5, 0.0),
+                    position: Vec3(1.5, 6.5, 0.0),
                     scale: 1.0,
                     atlas_index: 1,
-                },
-                Sprite {
-                    position: Vec3(1.5, 6.6, 0.0),
-                    scale: 1.0,
-                    atlas_index: 0,
                 },
             ],
         }
