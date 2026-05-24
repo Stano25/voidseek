@@ -2,6 +2,7 @@
 pub enum RenderPipelineType {
     Raycast,
     Blit,
+    Sprite,
 }
 
 #[derive(Eq, Hash, PartialEq, Clone, Copy)]
@@ -19,4 +20,6 @@ pub enum BindScope {
     RayHits,
     AtlasTexture,
     BlitTexture,
+    AtlasSpriteTexture,
+    SpriteInstances,
 }

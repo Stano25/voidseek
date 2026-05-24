@@ -13,6 +13,7 @@ use crate::{MAX_MAP_TILES, TILE_SIZE, MAX_MAP_WIDTH, MAX_MAP_HEIGHT};
 
 const RENDER_WIDTH: u32 = 960;
 const RENDER_HEIGHT: u32 = 540;
+const MAX_SPRITES: usize = 4096;
 
 struct CameraResources {
     bind_group: wgpu::BindGroup,
@@ -35,6 +36,25 @@ struct BlitResources {
     bind_group: wgpu::BindGroup,
 }
 
+struct RayResources {
+    bind_group: wgpu::BindGroup,
+    buffer: wgpu::Buffer,
+}
+
+struct SpriteResources {
+    bind_group: wgpu::BindGroup,
+    buffer: wgpu::Buffer,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct SpriteInstance {
+    pub position: [f32; 3],
+    pub scale: f32,
+    pub atlas_index: u32,
+    pub _padding: [u32; 3],
+}
+
 pub struct WgpuState {
     instance: wgpu::Instance,
     surface: wgpu::Surface<'static>,
@@ -49,10 +69,12 @@ pub struct WgpuState {
     camera_resources: CameraResources,
     map_resources: MapResources,
     atlas_resources: AtlasResources,
+    atlas_sprite_resources: AtlasResources,
     blit_resources: BlitResources,
     compute_bind_group: wgpu::BindGroup,
-    ray_hits_bind_group: wgpu::BindGroup,
-    ray_hits_buffer: wgpu::Buffer,
+    ray_resources: RayResources,
+    sprite_resources: SpriteResources,
+    sprite_count: u32,
 }
 
 impl WgpuState {
@@ -79,7 +101,10 @@ impl WgpuState {
 
         let device_descriptor = wgpu::DeviceDescriptor {
             required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
+            required_limits: wgpu::Limits {
+                max_bind_groups: 6,
+                ..wgpu::Limits::default()
+            },
             label: Some("Device"),
             ..Default::default()
         };
@@ -140,7 +165,8 @@ impl WgpuState {
         // =====================================================================
         // Inicializácia atlasu textúr
         // =====================================================================
-        let atlas_texture = Self::create_atlas_texture(&device, &queue, wgpu::TextureFormat::Rgba8UnormSrgb);
+        let atlas_texture = Self::create_atlas_texture(&device, &queue, wgpu::TextureFormat::Rgba8UnormSrgb,
+             &["Wall-Texture.png", "Floor-Texture.png", "Ceiling-Texture.png"]);
 
         let atlas_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Texture Array View"),
@@ -179,10 +205,57 @@ impl WgpuState {
             texture_view: atlas_view,
         };
 
+        let atlas_sprite_texture = Self::create_atlas_texture(&device, &queue, wgpu::TextureFormat::Rgba8UnormSrgb,
+             &["Sprite-bg.png", "Sprite-no-bg.png"]); // Pridaj si tu vlastné názvy spritov
+
+        let atlas_view = atlas_sprite_texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("Texture Array View"),
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+
+        let atlas_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Retro Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
+
+        let atlas_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Texture Array Bind Group"),
+            layout: &bind_group_layouts[&BindScope::AtlasTexture],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&atlas_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&atlas_sampler),
+                },
+            ],
+        });
+
+        let atlas_sprite_resources = AtlasResources {
+            bind_group: atlas_bind_group,
+            texture_view: atlas_view,
+        };
+
         let ray_hits_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Ray Hits Buffer"),
             size: (RENDER_WIDTH * 16) as u64,
             usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+
+        let sprites_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Sprite Instances Buffer"),
+            size: (MAX_SPRITES * std::mem::size_of::<SpriteInstance>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
@@ -251,6 +324,24 @@ impl WgpuState {
             ],
         });
 
+        let ray_resources = RayResources {
+            bind_group: ray_hits_bind_group,
+            buffer: ray_hits_buffer,
+        };
+
+        let sprites_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Sprite Instances Bind Group"),
+            layout: &bind_group_layouts[&BindScope::SpriteInstances],
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: sprites_buffer.as_entire_binding() },
+            ],
+        });
+
+        let sprite_resources = SpriteResources {
+            bind_group: sprites_bind_group,
+            buffer: sprites_buffer,
+        };
+
         let map_resources = MapResources {
             bind_group: map_bind_group,
             data_buffer: map_buffer,
@@ -264,7 +355,7 @@ impl WgpuState {
                 wgpu::BindGroupEntry { binding: 0, resource: camera_resources.buffer.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: map_resources.settings_buffer.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 2, resource: map_resources.data_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 3, resource: ray_hits_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: ray_resources.buffer.as_entire_binding() },
             ],
         });
 
@@ -281,11 +372,13 @@ impl WgpuState {
             camera_resources,
             map_resources,
             atlas_resources,
+            atlas_sprite_resources,
             blit_resources,
             compute_pipelines,
-            ray_hits_buffer,
-            ray_hits_bind_group,
             compute_bind_group,
+            ray_resources,
+            sprite_resources,
+            sprite_count: 0,
         }
     }
 
@@ -347,8 +440,36 @@ impl WgpuState {
             render_pass.set_bind_group(0, &self.camera_resources.bind_group, &[]);
             render_pass.set_bind_group(1, &self.map_resources.bind_group, &[]);
             render_pass.set_bind_group(2, &self.atlas_resources.bind_group, &[]);
-            render_pass.set_bind_group(3, &self.ray_hits_bind_group, &[]);
+            render_pass.set_bind_group(3, &self.ray_resources.bind_group, &[]);
             render_pass.draw(0..3, 0..1);
+        }
+
+        {
+            let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Sprite Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.blit_resources.offscreen_texture,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load, // ZMENENÉ: Namiesto Clear tu použijeme Load!
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+            });
+
+            let render_pipeline = self.render_pipelines.get(&RenderPipelineType::Sprite).unwrap();
+            render_pass.set_pipeline(render_pipeline);
+            render_pass.set_bind_group(0, &self.camera_resources.bind_group, &[]);
+            render_pass.set_bind_group(1, &self.ray_resources.bind_group, &[]);
+            render_pass.set_bind_group(2, &self.atlas_sprite_resources.bind_group, &[]);
+            render_pass.set_bind_group(3, &self.sprite_resources.bind_group, &[]);
+            render_pass.set_bind_group(4, &self.map_resources.bind_group, &[]);
+            render_pass.draw(0..6, 0..self.sprite_count); // ZMENENÉ: Namiesto 0..1 tu použijeme 0..32, aby sme vykreslili všetky sprity!
         }
 
         //Kreslíme texturu na okno
@@ -397,7 +518,7 @@ impl WgpuState {
 
         builder.add_entry(wgpu::BindGroupLayoutEntry {
             binding: 0,
-            visibility: wgpu::ShaderStages::FRAGMENT,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
@@ -454,7 +575,28 @@ impl WgpuState {
 
         layout = builder.build("Atlas Bind Group Layout");
         layouts.insert(BindScope::AtlasTexture, layout);
+
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2Array,
+                multisampled: false,
+            },
+            count: None,
+        });
+
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            count: None,
+        });
         
+        layout = builder.build("Atlas Sprite Bind Group Layout");
+        layouts.insert(BindScope::AtlasSpriteTexture, layout);
+
         builder.add_entry(wgpu::BindGroupLayoutEntry {
             binding: 0,
             visibility: wgpu::ShaderStages::FRAGMENT,
@@ -488,6 +630,19 @@ impl WgpuState {
         });
         layout = builder.build("Ray Hits Fragment Layout");
         layouts.insert(BindScope::RayHits, layout);
+
+        builder.add_entry(wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+        layout = builder.build("Sprite Instances Layout");
+        layouts.insert(BindScope::SpriteInstances, layout);
 
         builder.add_entry(wgpu::BindGroupLayoutEntry {
         binding: 0,
@@ -554,19 +709,27 @@ impl WgpuState {
         
         pipelines.insert(RenderPipelineType::Raycast, pipeline);
 
-        let mut blit_builder = pipeline::Builder::new(device);
-        blit_builder.set_shader_module("blit.wgsl", "vs_main", "fs_main");
-        blit_builder.set_pixel_format(config.format);
-        blit_builder.add_bind_group_layout(&bind_group_layouts[&BindScope::BlitTexture]);
-        pipelines.insert(RenderPipelineType::Blit, blit_builder.build("Blit Pipeline"));
+        builder.set_shader_module("blit.wgsl", "vs_main", "fs_main");
+        builder.set_pixel_format(config.format);
+        builder.add_bind_group_layout(&bind_group_layouts[&BindScope::BlitTexture]);
+        pipelines.insert(RenderPipelineType::Blit, builder.build("Blit Pipeline"));
+        
+        builder.set_shader_module("sprite.wgsl", "vs_main", "fs_main");
+        builder.set_pixel_format(offscreen_format);
+        builder.add_bind_group_layout(&bind_group_layouts[&BindScope::Camera]);
+        builder.add_bind_group_layout(&bind_group_layouts[&BindScope::RayHits]);
+        builder.add_bind_group_layout(&bind_group_layouts[&BindScope::AtlasSpriteTexture]);
+        builder.add_bind_group_layout(&bind_group_layouts[&BindScope::SpriteInstances]);
+        builder.add_bind_group_layout(&bind_group_layouts[&BindScope::Map]);
+        pipelines.insert(RenderPipelineType::Sprite, builder.build("Sprite Pipeline"));
 
         pipelines
     }
 
-    fn create_atlas_texture(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> wgpu::Texture {
+    fn create_atlas_texture(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, texture_files: &[&str]) -> wgpu::Texture {
         let mut builder = atlas::Builder::new(device, queue);
         builder.set_pixel_format(format);
-        builder.add_textures(&["Wall-Texture.png", "Floor-Texture.png", "Ceiling-Texture.png"]).expect("Failed to add textures to atlas");
+        builder.add_textures(texture_files).expect("Failed to add textures to atlas");
         builder.build("Atlas Texture")
     }
 
@@ -627,5 +790,14 @@ impl WgpuState {
     pub fn update_surface(&mut self) {
         self.surface = self.instance.create_surface(self.window.clone()).unwrap();
         self.surface.configure(&self.device, &self.config);
+    }
+
+    pub fn update_sprites(&mut self, sprites: &[SpriteInstance]) {
+        self.sprite_count = sprites.len() as u32;
+        self.queue.write_buffer(
+            &self.sprite_resources.buffer,
+            0,
+            bytemuck::cast_slice(sprites),
+        );
     }
 }

@@ -1,5 +1,7 @@
 use crate::game::player::Player;
 use crate::game::input::InputState;
+use crate::game::sprite::{Sprite};
+use crate::game::definitions::Vec3;
 
 pub struct GameState {
     player: Player,
@@ -7,6 +9,7 @@ pub struct GameState {
     map_walls: Vec<u32>,
     map_floor: Vec<u32>,
     map_ceiling: Vec<u32>,
+    pub sprites: Vec<Sprite>,
 }
 
 impl GameState {
@@ -44,6 +47,18 @@ impl GameState {
                 0,3,3,3,3,3,3,3,
                 0,0,0,0,0,0,0,0,
             ],
+            sprites: vec![
+                Sprite {
+                    position: Vec3(1.5, 5.5, 0.0),
+                    scale: 1.0,
+                    atlas_index: 1,
+                },
+                Sprite {
+                    position: Vec3(1.5, 6.6, 0.0),
+                    scale: 1.0,
+                    atlas_index: 0,
+                },
+            ],
         }
     }
 
@@ -69,5 +84,9 @@ impl GameState {
             map_data.push(0);
         }
         map_data
+    }
+
+    pub fn get_sprites(&self) -> &Vec<Sprite> {
+        &self.sprites
     }
 }
