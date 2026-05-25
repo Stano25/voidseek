@@ -166,7 +166,7 @@ impl WgpuState {
         // Inicializácia atlasu textúr
         // =====================================================================
         let atlas_texture = Self::create_atlas_texture(&device, &queue, wgpu::TextureFormat::Rgba8UnormSrgb,
-             &["Wall-Texture.png", "Floor-Texture.png", "Ceiling-Texture.png"]);
+             &["Wall-Texture.png", "Floor-Texture.png", "Ceiling-Texture.png", "Wall-vent-open.png","Wall-vent-closed.png"]);
 
         let atlas_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Texture Array View"),
