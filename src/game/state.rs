@@ -1,22 +1,24 @@
-use crate::game::player::Player;
 use crate::game::input::InputState;
-use crate::game::sprite::{Sprite};
-use crate::game::definitions::Vec3;
+use crate::core::renderer::{SpriteInstance};
+use hecs::{Entity, World};
+use crate::game::components::{Position, Rotation, Velocity, PlayerController, Sprite};
+use crate::game::systems::{PlayerRotationSystem, PlayerMovementSystem};
 
 pub struct GameState {
-    player: Player,
-    pub input: InputState,
+    pub world: World,
+    pub input_state: InputState,
+    pub player: Option<Entity>,
     map_walls: Vec<u32>,
     map_floor: Vec<u32>,
     map_ceiling: Vec<u32>,
-    pub sprites: Vec<Sprite>,
 }
 
 impl GameState {
     pub fn new() -> Self {
         Self {
-            player: Player::new(),
-            input: InputState::new(),
+            world: World::new(),
+            input_state: InputState::default(),
+            player: None,
             map_walls: vec![
                 1,1,1,1,1,1,1,1,
                 1,0,1,0,0,0,0,1,
@@ -46,28 +48,63 @@ impl GameState {
                 0,3,0,0,0,3,3,0,
                 0,3,3,3,3,3,3,3,
                 0,0,0,0,0,0,0,0,
-            ],
-            sprites: vec![
-                Sprite {
-                    position: Vec3(1.5, 6.5, 0.0),
-                    scale: 1.0,
-                    atlas_index: 1,
-                },
-            ],
+            ]
         }
     }
 
     pub fn start(&mut self) {
-        self.player.start();
+        self.create_player(1.5, 1.5, 0.0, 1.95);
+        self.create_sprite(1.5, 6.5, 0.0, 1.0, 1);
     }
 
     pub fn update(&mut self, delta_time: f32) {
-        self.player.update(delta_time, &mut self.input, &self.map_walls);
+        PlayerRotationSystem(&mut self.world, &mut self.input_state);
+        PlayerMovementSystem(&mut self.world, delta_time, &self.map_walls, &self.input_state);
     }
 
-    pub fn camera_pose(&self) -> (f32, f32, f32) {
-        let (x, y) = self.player.position();
-        (x, y, self.player.angle())
+    pub fn create_player(&mut self, x: f32, y: f32, angle: f32, speed: f32) {
+        if self.player.is_none(){
+            let player_entity = self.world.spawn((
+                Position { x, y },
+                Rotation { angle },
+                Velocity { speed, dx: 0.0, dy: 0.0 },
+                PlayerController { sensitivity: 0.0015 },
+            ));
+
+            self.player = Some(player_entity);
+        }
+    }
+
+    pub fn get_camera_info(&mut self) -> Option<(f32, f32, f32)> {
+        if let Some(player_id) = self.player {
+            if let Ok((pos, rot, _)) = self.world.query_one_mut::<(&Position, &Rotation, &Velocity)>(player_id) {
+                return Some((pos.x, pos.y, rot.angle));
+            }
+        }
+        None
+    }
+
+    pub fn get_sprites(&mut self) -> Vec<SpriteInstance> {
+        let mut sprite_instances: Vec<SpriteInstance> = self.world
+            .query_mut::<(&Position, &Sprite)>()
+            .into_iter()
+            .map(|(pos, sprite)| SpriteInstance{
+                position: [pos.x, pos.y, sprite.z],
+                scale: sprite.scale,
+                atlas_index: sprite.atlas_index,
+                _padding: [0; 3],
+            })
+            .collect();
+        
+        let (cam_x, cam_y, _) = self.get_camera_info().unwrap_or((0.0, 0.0, 0.0));
+
+        sprite_instances.sort_by(|a, b| {
+            let dist_a = (a.position[0] - cam_x).powi(2) + (a.position[1] - cam_y).powi(2);
+            let dist_b = (b.position[0] - cam_x).powi(2) + (b.position[1] - cam_y).powi(2);
+                        
+            dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        sprite_instances
     }
 
     pub fn get_map_data(&self) -> Vec<u32> {
@@ -81,7 +118,10 @@ impl GameState {
         map_data
     }
 
-    pub fn get_sprites(&self) -> &Vec<Sprite> {
-        &self.sprites
+    pub fn create_sprite(&mut self, x: f32, y: f32, z: f32, scale: f32, atlas_index: u32) {
+        self.world.spawn((
+            Position { x, y },
+            Sprite { z, scale, atlas_index },
+        ));
     }
 }

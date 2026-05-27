@@ -6,8 +6,8 @@ pub struct InputState {
     pub mouse_dx: f64,
 }
 
-impl InputState {
-    pub fn new() -> Self {
+impl Default for InputState {
+    fn default() -> Self {
         Self {
             forward: false,
             backward: false,

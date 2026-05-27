@@ -107,16 +107,16 @@ impl ApplicationHandler for WindowApp {
                     }
 
                     (PhysicalKey::Code(KeyCode::KeyW), state) => {
-                        self.game.input.forward = state == ElementState::Pressed;
+                        self.game.input_state.forward = state == ElementState::Pressed;
                     }
                     (PhysicalKey::Code(KeyCode::KeyS), state) => {
-                        self.game.input.backward = state == ElementState::Pressed;
+                        self.game.input_state.backward = state == ElementState::Pressed;
                     }
                     (PhysicalKey::Code(KeyCode::KeyA), state) => {
-                        self.game.input.left = state == ElementState::Pressed;
+                        self.game.input_state.left = state == ElementState::Pressed;
                     }
                     (PhysicalKey::Code(KeyCode::KeyD), state) => {
-                        self.game.input.right = state == ElementState::Pressed;
+                        self.game.input_state.right = state == ElementState::Pressed;
                     }
                     _ => (),
                 }
@@ -133,34 +133,12 @@ impl ApplicationHandler for WindowApp {
                 self.game.update(dt);
 
                 if let Some(renderer) = &mut self.renderer {
-                    let (cam_x, cam_y, cam_angle) = self.game.camera_pose();
-                    renderer.update_camera(cam_x, cam_y, cam_angle);
+                    if let Some((cam_x, cam_y, cam_angle)) = self.game.get_camera_info() {
+                        renderer.update_camera(cam_x, cam_y, cam_angle);
+                    }
 
-                    let sprites = self.game.get_sprites();
+                    let sprite_instances = self.game.get_sprites();
 
-                    let cam_x_map = cam_x / 64.0;
-                    let cam_y_map = cam_y / 64.0;
-                    
-                    // 4. Skonvertuj herné Sprite na WGPU SpriteInstance
-                    let mut sprite_instances: Vec<SpriteInstance> = sprites.iter().map(|s| {
-                        SpriteInstance {
-                            position: [s.position.0, s.position.1, s.position.2], 
-                            scale: s.scale,
-                            atlas_index: s.atlas_index,
-                            _padding: [0; 3],
-                        }
-                    }).collect();
-
-                    sprite_instances.sort_by(|a, b| {
-                        // Použijeme štvorce vzdialeností, aby sme sa vyhli zbytočnej odmocnine (pre zoradenie to stačí)
-                        let dist_a = (a.position[0] - cam_x_map).powi(2) + (a.position[1] - cam_y_map).powi(2);
-                        let dist_b = (b.position[0] - cam_x_map).powi(2) + (b.position[1] - cam_y_map).powi(2);
-                        
-                        // Zostupne: Najskôr vykreslíme tie s väčšou vzdialenosťou (preto b porovnávame s a)
-                        dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
-                    });
-
-                    // 5. Pošli dáta do GPU buffra
                     renderer.update_sprites(&sprite_instances);
 
                     renderer.render();
@@ -177,7 +155,7 @@ impl ApplicationHandler for WindowApp {
     fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: winit::event::DeviceId, event: winit::event::DeviceEvent) {
         if let winit::event::DeviceEvent::MouseMotion { delta: (dx, _dy) } = event {
             if self.mouse_locked {
-                self.game.input.mouse_dx += dx;
+                self.game.input_state.mouse_dx += dx;
             }
         }
     }

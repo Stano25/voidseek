@@ -49,7 +49,7 @@ fn vs_main(
     let sprite = sprites[instance_index];
     
     // Transformovať sprite pozíciu vzhľadom ku kamere (Kamera je v (0,0) a my počítame rozdiel)
-    let sprite_pos = sprite.position.xy - (camera.position / f32(map_settings.tile_size));
+    let sprite_pos = sprite.position.xy - camera.position;
     let sprite_z = sprite.position.z;
 
     // Transformácia do kamerového priestoru (Násobenie inverznou kamerovou maticou)
