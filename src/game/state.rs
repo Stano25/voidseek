@@ -54,7 +54,7 @@ impl GameState {
 
     pub fn start(&mut self) {
         self.create_player(1.5, 1.5, 0.0, 1.95);
-        self.create_sprite(1.5, 6.5, 0.0, 1.0, 1);
+        self.create_sprite(1.5, 6.5, 0.0, 0.0, 1.0, 1, 2);
     }
 
     pub fn update(&mut self, delta_time: f32) {
@@ -86,13 +86,14 @@ impl GameState {
 
     pub fn get_sprites(&mut self) -> Vec<SpriteInstance> {
         let mut sprite_instances: Vec<SpriteInstance> = self.world
-            .query_mut::<(&Position, &Sprite)>()
+            .query_mut::<(&Position, &Rotation, &Sprite)>()
             .into_iter()
-            .map(|(pos, sprite)| SpriteInstance{
+            .map(|(pos, rot, sprite)| SpriteInstance{
                 position: [pos.x, pos.y, sprite.z],
+                direction: [rot.angle.cos(), rot.angle.sin()],
                 scale: sprite.scale,
-                atlas_index: sprite.atlas_index,
-                _padding: [0; 3],
+                atlas_index_front: sprite.atlas_index_front,
+                atlas_index_back: sprite.atlas_index_back,
             })
             .collect();
         
@@ -118,10 +119,11 @@ impl GameState {
         map_data
     }
 
-    pub fn create_sprite(&mut self, x: f32, y: f32, z: f32, scale: f32, atlas_index: u32) {
+    pub fn create_sprite(&mut self, x: f32, y: f32, angle: f32, z: f32, scale: f32, atlas_index_front: u32, atlas_index_back: u32) {
         self.world.spawn((
             Position { x, y },
-            Sprite { z, scale, atlas_index },
+            Rotation { angle },
+            Sprite { z, scale, atlas_index_front, atlas_index_back },
         ));
     }
 }

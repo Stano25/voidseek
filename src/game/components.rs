@@ -20,5 +20,6 @@ pub struct PlayerController {
 pub struct Sprite {
     pub z: f32,
     pub scale: f32,
-    pub atlas_index: u32,
+    pub atlas_index_front: u32,
+    pub atlas_index_back: u32,
 }

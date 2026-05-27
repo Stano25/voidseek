@@ -50,9 +50,10 @@ struct SpriteResources {
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SpriteInstance {
     pub position: [f32; 3],
-    pub scale: f32,
-    pub atlas_index: u32,
-    pub _padding: [u32; 3],
+    pub scale: f32, 
+    pub atlas_index_front: u32,
+    pub atlas_index_back: u32,
+    pub direction: [f32; 2],
 }
 
 pub struct WgpuState {
@@ -206,7 +207,7 @@ impl WgpuState {
         };
 
         let atlas_sprite_texture = Self::create_atlas_texture(&device, &queue, wgpu::TextureFormat::Rgba8UnormSrgb,
-             &["Sprite-bg.png", "Sprite-no-bg.png"]); // Pridaj si tu vlastné názvy spritov
+             &["Sprite-bg.png", "Sprite-no-bg.png", "Sprite-no-bg-back.png"]); // Pridaj si tu vlastné názvy spritov
 
         let atlas_view = atlas_sprite_texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Texture Array View"),

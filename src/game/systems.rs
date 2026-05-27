@@ -69,28 +69,28 @@ pub fn PlayerMovementSystem(world: &mut World, delta_time: f32, map_walls: &[u32
 }
 
 fn is_wall(check_x: f32, check_y: f32, map: &[u32]) -> bool {
-        let inverted_size = 1.0 / TILE_SIZE as f32;
+    let inverted_size = 1.0 / TILE_SIZE as f32;
 
-        let player_rad = PLAYER_RADIUS * inverted_size;
+    let player_rad = PLAYER_RADIUS * inverted_size;
 
-        let min_x = (check_x - player_rad).floor() as i32;
-        let max_x = (check_x + player_rad).floor() as i32;
-        let min_y = (check_y - player_rad).floor() as i32;
-        let max_y = (check_y + player_rad).floor() as i32;
+    let min_x = (check_x - player_rad).floor() as i32;
+    let max_x = (check_x + player_rad).floor() as i32;
+    let min_y = (check_y - player_rad).floor() as i32;
+    let max_y = (check_y + player_rad).floor() as i32;
 
-        for x in min_x..=max_x {
-            for y in min_y..=max_y{
-                if x < 0 || x >= MAX_MAP_WIDTH as i32 || y < 0 || y >= MAX_MAP_HEIGHT as i32 {
-                    return true; // Ak sa hráč pokúša ísť mimo mapy
-                }
+    for x in min_x..=max_x {
+        for y in min_y..=max_y{
+            if x < 0 || x >= MAX_MAP_WIDTH as i32 || y < 0 || y >= MAX_MAP_HEIGHT as i32 {
+                return true; // Ak sa hráč pokúša ísť mimo mapy
+            }
 
-                let map_index = (y as usize) * MAX_MAP_WIDTH as usize + (x as usize);
-                if map.get(map_index).is_some_and(|&tile| tile != 0) {
-                    return true;
-                }
+            let map_index = (y as usize) * MAX_MAP_WIDTH as usize + (x as usize);
+            if map.get(map_index).is_some_and(|&tile| tile != 0) {
+                return true;
             }
         }
-
-        false
     }
+
+    false
+}
 
