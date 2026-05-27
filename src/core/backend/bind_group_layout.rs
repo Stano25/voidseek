@@ -1,5 +1,5 @@
 pub struct Builder<'a> {
-    entries: Vec<(wgpu::BindGroupLayoutEntry)>,
+    entries: Vec<wgpu::BindGroupLayoutEntry>,
     device: &'a wgpu::Device,
 }
 
