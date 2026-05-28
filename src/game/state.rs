@@ -54,7 +54,7 @@ impl GameState {
 
     pub fn start(&mut self) {
         self.create_player(1.5, 1.5, 0.0, 1.95);
-        self.create_sprite(1.5, 6.5, 0.0, 0.0, 1.0, 1, 2);
+        self.create_sprite(1.5, 6.5, 0.0, true, 0.0, 1.0, 1, 3);
     }
 
     pub fn update(&mut self, delta_time: f32) {
@@ -88,6 +88,7 @@ impl GameState {
         let mut sprite_instances: Vec<SpriteInstance> = self.world
             .query_mut::<(&Position, &Rotation, &Sprite)>()
             .into_iter()
+            .filter(|(_, _, sprite)| sprite.is_visible)
             .map(|(pos, rot, sprite)| SpriteInstance{
                 position: [pos.x, pos.y, sprite.z],
                 direction: [rot.angle.cos(), rot.angle.sin()],
@@ -119,11 +120,11 @@ impl GameState {
         map_data
     }
 
-    pub fn create_sprite(&mut self, x: f32, y: f32, angle: f32, z: f32, scale: f32, atlas_index_front: u32, atlas_index_back: u32) {
+    pub fn create_sprite(&mut self, x: f32, y: f32, angle: f32, is_visible: bool, z: f32, scale: f32, atlas_index_front: u32, atlas_index_back: u32) {
         self.world.spawn((
             Position { x, y },
             Rotation { angle },
-            Sprite { z, scale, atlas_index_front, atlas_index_back },
+            Sprite { z, scale, is_visible, atlas_index_front, atlas_index_back },
         ));
     }
 }

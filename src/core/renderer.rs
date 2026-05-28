@@ -207,7 +207,7 @@ impl WgpuState {
         };
 
         let atlas_sprite_texture = Self::create_atlas_texture(&device, &queue, wgpu::TextureFormat::Rgba8UnormSrgb,
-             &["Sprite-bg.png", "Sprite-no-bg.png", "Sprite-no-bg-back.png"]); // Pridaj si tu vlastné názvy spritov
+             &["Sprite-bg.png", "Sprite-no-bg.png","Sprite-bg-back.png", "Sprite-no-bg-back.png"]); // Pridaj si tu vlastné názvy spritov
 
         let atlas_view = atlas_sprite_texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Texture Array View"),

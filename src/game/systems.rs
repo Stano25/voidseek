@@ -101,61 +101,59 @@ fn is_wall(check_x: f32, check_y: f32, map: &[u32]) -> bool {
 #[allow(non_snake_case)]
 pub fn AnimatorSystem(world: &mut World, delta_time: f32) {
     for (animator, sprite) in world.query_mut::<(&mut SpriteAnimator,&mut Sprite)>() {
-        match animator.playback_state {
-            PlaybackState::Playing => {
-                animator.timer += delta_time;
-                if animator.timer >= animator.frame_duration {
-                    animator.timer -= animator.frame_duration;
-                    animator.current_frame = (animator.current_frame + 1) % animator.frames_front.len();
-                    sprite.atlas_index_front = animator.frames_front[animator.current_frame] as u32;
-                    sprite.atlas_index_back = animator.frames_back[animator.current_frame] as u32;
-                    if (animator.current_frame + 2) % animator.frames_front.len() == 0 && animator.playback_mode != PlaybackMode::Loop {
-                        if matches!(animator.playback_mode, PlaybackMode::PingPong) {
-                            animator.is_reversed = !animator.is_reversed;
-                            animator.frames_front.reverse();
-                            animator.frames_back.reverse();
-                            animator.playback_state = PlaybackState::Stopped;
-                        } else {
-                            animator.playback_state = PlaybackState::Stopped;
-                        }
+        if animator.playback_state != PlaybackState::Playing {
+            continue;
+        }
+
+        if let Some(animation) = animator.animations.get(&animator.current_animation) {
+            animator.timer += delta_time;
+            if animator.timer >= animation.frame_duration {
+                animator.timer -= animation.frame_duration;
+
+                let next_frame = animator.current_frame + 1;
+
+                if next_frame >= animation.frames_front.len() {
+                    animator.current_frame = 0;
+                    if animation.playback_mode != PlaybackMode::Loop {
+                        animator.playback_state = PlaybackState::Stopped;
                     }
                 }
-            },
-            PlaybackState::Paused => continue,
-            PlaybackState::Stopped => {
-                animator.current_frame = 0;
-                sprite.atlas_index_front = animator.frames_front[0] as u32;
-                sprite.atlas_index_back = animator.frames_back[0] as u32;
-                continue;
-            },
+                else {
+                    animator.current_frame = next_frame;
+                }
+            }
+            if animator.playback_state == PlaybackState::Playing {
+                sprite.atlas_index_front = animation.frames_front[animator.current_frame] as u32;
+                sprite.atlas_index_back = animation.frames_back[animator.current_frame] as u32;
+            }
         }
     }
 
     for (animator, texture) in world.query_mut::<(&mut TextureAnimator,&mut Texture)>() {
-        match animator.playback_state {
-            PlaybackState::Playing => {
-                animator.timer += delta_time;
-                if animator.timer >= animator.frame_duration {
-                    animator.timer -= animator.frame_duration;
-                    animator.current_frame = (animator.current_frame + 1) % animator.frames.len();
-                    texture.atlas_index = animator.frames[animator.current_frame] as u32;
-                    if (animator.current_frame + 2) % animator.frames.len() == 0 && animator.playback_mode != PlaybackMode::Loop {
-                        if matches!(animator.playback_mode, PlaybackMode::PingPong) {
-                            animator.is_reversed = !animator.is_reversed;
-                            animator.frames.reverse();
-                            animator.playback_state = PlaybackState::Stopped;
-                        } else {
-                            animator.playback_state = PlaybackState::Stopped;
-                        }
+        if animator.playback_state != PlaybackState::Playing {
+            continue;
+        }
+
+        if let Some(animation) = animator.animations.get(&animator.current_animation) {
+            animator.timer += delta_time;
+            if animator.timer >= animation.frame_duration {
+                animator.timer -= animation.frame_duration;
+
+                let next_frame = animator.current_frame + 1;
+                
+                if next_frame >= animation.frames.len() {
+                    animator.current_frame = 0;
+                    if animation.playback_mode != PlaybackMode::Loop {
+                        animator.playback_state = PlaybackState::Stopped;
                     }
                 }
-            },
-            PlaybackState::Paused => continue,
-            PlaybackState::Stopped => {
-                animator.current_frame = 0;
-                texture.atlas_index = animator.frames[0] as u32;
-                continue;
-            },
+                else {
+                    animator.current_frame = next_frame;
+                }
+            }
+            if animator.playback_state == PlaybackState::Playing {
+                texture.atlas_index = animation.frames[animator.current_frame] as u32;
+            }
         }
     }
 }
