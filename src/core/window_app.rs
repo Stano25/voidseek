@@ -105,6 +105,9 @@ impl ApplicationHandler for WindowApp {
                     (PhysicalKey::Code(KeyCode::KeyL), ElementState::Pressed) => {
                         self.toggle_mouse_lock();
                     }
+                    (PhysicalKey::Code(KeyCode::KeyE), ElementState::Pressed) => {
+                        self.game.input_state.interact = true;
+                    }
 
                     (PhysicalKey::Code(KeyCode::KeyW), state) => {
                         self.game.input_state.forward = state == ElementState::Pressed;

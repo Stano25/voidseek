@@ -64,3 +64,8 @@ pub struct SpriteAnimator {
     pub playback_state: PlaybackState,
     pub direction: AnimationDirection,
 }
+
+pub struct Interactable {
+    pub is_enabled: bool,
+    pub on_interact: InteractCallback,
+}

@@ -4,6 +4,7 @@ pub struct InputState {
     pub left: bool,
     pub right: bool,
     pub mouse_dx: f64,
+    pub interact: bool,
 }
 
 impl Default for InputState {
@@ -14,6 +15,7 @@ impl Default for InputState {
             left: false,
             right: false,
             mouse_dx: 0.0,
+            interact: false,
         }
     }
 }

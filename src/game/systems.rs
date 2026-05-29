@@ -1,10 +1,11 @@
-use crate::game::components::{PlayerController, Position, Rotation, Sprite, Velocity, SpriteAnimator, TextureAnimator, Texture};
+use crate::game::components::{PlayerController, Position, Rotation, Sprite, Velocity, SpriteAnimator, TextureAnimator, Texture, Interactable};
 use crate::game::input::InputState;
 use crate::game::definitions::*;
-use crate::game::definitions::PLAYER_RADIUS;
+use crate::game::state::GameState;
 use crate::{TILE_SIZE, MAX_MAP_WIDTH, MAX_MAP_HEIGHT};
 
-use hecs::World;
+use hecs::{Entity, World};
+use std::char::MAX;
 use std::f32::consts::PI;
 
 #[allow(non_snake_case)]
@@ -156,4 +157,100 @@ pub fn AnimatorSystem(world: &mut World, delta_time: f32) {
             }
         }
     }
+}
+
+#[allow(non_snake_case)]
+pub fn InteractSystem(world: &mut World, input: &mut InputState, player: &mut Option<Entity>, map_walls: &[u32]) {
+    if !input.interact || player.is_none() {
+        return;
+    }
+    input.interact = false;
+
+    let player_entity = player.unwrap();
+    
+    let (player_x, player_y) = {
+        let mut q = world.query_one::<&Position>(player_entity);
+        let p = q.get().unwrap();
+        (p.x, p.y)
+    };
+
+    let (dir_x, dir_y) = {
+        let mut q = world.query_one::<&Rotation>(player_entity);
+        let r = q.get().unwrap();
+        (r.angle.cos(), r.angle.sin())
+    };
+
+    let mut map_x = player_x.floor() as i32;
+    let mut map_y = player_y.floor() as i32;
+
+    let delta_dist_x = (1.0 / dir_x).abs();
+    let delta_dist_y = (1.0 / dir_y).abs();
+
+    let step_x: i32;
+    let step_y: i32;
+    let mut side_dist_x: f32;
+    let mut side_dist_y: f32;
+
+    if dir_x < 0.0 {
+        step_x = -1;
+        side_dist_x = (player_x - map_x as f32) * delta_dist_x;
+    } else {
+        step_x = 1;
+        side_dist_x = ((map_x + 1) as f32 - player_x) * delta_dist_x;
+    }
+
+    if dir_y < 0.0 {
+        step_y = -1;
+        side_dist_y = (player_y - map_y as f32) * delta_dist_y;
+    } else {
+        step_y = 1;
+        side_dist_y = ((map_y + 1) as f32 - player_y) * delta_dist_y;
+    }
+
+    let mut hit_distance: f32 = 0.0;
+    let mut entity_hit: Option<Entity> = None;
+
+    while hit_distance <= INTERACT_DISTANCE {
+        if side_dist_x < side_dist_y {
+            hit_distance = side_dist_x;
+            side_dist_x += delta_dist_x;
+            map_x += step_x;
+        } else {
+            hit_distance = side_dist_y;
+            side_dist_y += delta_dist_y;
+            map_y += step_y;
+        }
+
+        if hit_distance > INTERACT_DISTANCE {
+            break;
+        }
+
+        if map_x >= 0 && map_x < MAX_MAP_WIDTH as i32 && map_y >= 0 && map_y < MAX_MAP_HEIGHT as i32 {
+            let map_index = (map_y * MAX_MAP_WIDTH as i32 + map_x) as usize;
+            let tile = map_walls[map_index];
+            
+            if tile != 0 {
+                println!("Hit wall at ({}, {})", map_x, map_y);
+                entity_hit = find_interactable_at_position(world, map_x as f32, map_y as f32);
+                break;
+            }
+        }
+    }
+
+    if let Some(entity) = entity_hit {
+        let on_interact = {
+            let mut q = world.query_one::<&Interactable>(entity);
+            q.get().unwrap().on_interact
+        };
+        on_interact(world, player, entity);
+    }
+}
+
+fn find_interactable_at_position(world: &World, x: f32, y: f32) -> Option<Entity> {
+    for (entity, pos, _inte) in world.query::<(Entity, &Position, &Interactable)>().iter() {
+        if pos.x == x && pos.y == y {
+            return Some(entity);
+        }
+    }
+    None
 }

@@ -1,8 +1,9 @@
 use crate::game::input::InputState;
 use crate::core::renderer::{SpriteInstance};
 use hecs::{Entity, World};
-use crate::game::components::{Position, Rotation, Velocity, PlayerController, Sprite};
-use crate::game::systems::{PlayerRotationSystem, PlayerMovementSystem};
+use crate::game::components::{Position, Rotation, Velocity, PlayerController, Sprite, Interactable, TextureAnimator};
+use crate::game::systems::{PlayerRotationSystem, PlayerMovementSystem, InteractSystem};
+use crate::game::definitions::*;
 
 pub struct GameState {
     pub world: World,
@@ -55,11 +56,13 @@ impl GameState {
     pub fn start(&mut self) {
         self.create_player(1.5, 1.5, 0.0, 1.95);
         self.create_sprite(1.5, 6.5, 0.0, true, 0.0, 1.0, 1, 3);
+        self.create_vent(4.0, 3.0, true, vent_hit);
     }
 
     pub fn update(&mut self, delta_time: f32) {
         PlayerRotationSystem(&mut self.world, &mut self.input_state);
         PlayerMovementSystem(&mut self.world, delta_time, &self.map_walls, &self.input_state);
+        InteractSystem(&mut self.world, &mut self.input_state, &mut self.player, &self.map_walls);
     }
 
     pub fn create_player(&mut self, x: f32, y: f32, angle: f32, speed: f32) {
@@ -127,4 +130,15 @@ impl GameState {
             Sprite { z, scale, is_visible, atlas_index_front, atlas_index_back },
         ));
     }
+
+    pub fn create_vent(&mut self, x: f32, y: f32, is_enabled: bool, on_interact: InteractCallback) {
+        self.world.spawn((
+            Position { x, y },
+            Interactable { is_enabled, on_interact },
+        ));
+    }
+}
+
+fn vent_hit(world: &mut World, player: &mut Option<Entity>, entity: Entity) {
+    println!("Ventujem");
 }
