@@ -2,7 +2,7 @@ use crate::game::input::InputState;
 use crate::core::renderer::{SpriteInstance};
 use hecs::{Entity, World};
 use crate::game::components::{Position, Rotation, Velocity, PlayerController, Sprite, Interactable, TextureAnimator};
-use crate::game::systems::{PlayerRotationSystem, PlayerMovementSystem, InteractSystem};
+use crate::game::systems::*;
 use crate::game::definitions::*;
 
 pub struct GameState {
@@ -62,7 +62,9 @@ impl GameState {
     pub fn update(&mut self, delta_time: f32) {
         PlayerRotationSystem(&mut self.world, &mut self.input_state);
         PlayerMovementSystem(&mut self.world, delta_time, &self.map_walls, &self.input_state);
+        AnimatorSystem(&mut self.world, delta_time);
         InteractSystem(&mut self.world, &mut self.input_state, &mut self.player, &self.map_walls);
+        VentSystem(&mut self.world, delta_time);
     }
 
     pub fn create_player(&mut self, x: f32, y: f32, angle: f32, speed: f32) {

@@ -69,3 +69,11 @@ pub struct Interactable {
     pub is_enabled: bool,
     pub on_interact: InteractCallback,
 }
+
+pub struct Vent {
+    pub is_open: bool,
+    pub timer: f32,
+    pub time_to_open: f32,
+    pub orientation: VentOrientation,
+    pub destinations: Vec<Position>,
+}

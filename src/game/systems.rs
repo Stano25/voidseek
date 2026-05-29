@@ -1,4 +1,4 @@
-use crate::game::components::{PlayerController, Position, Rotation, Sprite, Velocity, SpriteAnimator, TextureAnimator, Texture, Interactable};
+use crate::game::components::*;
 use crate::game::input::InputState;
 use crate::game::definitions::*;
 use crate::game::state::GameState;
@@ -253,4 +253,18 @@ fn find_interactable_at_position(world: &World, x: f32, y: f32) -> Option<Entity
         }
     }
     None
+}
+
+#[allow(non_snake_case)]
+pub fn VentSystem(world: &mut World, delta_time: f32) {
+    for (vent, anim, inte) in world.query_mut::<(&mut Vent, &mut TextureAnimator, &mut Interactable)>() {
+        if vent.is_open { continue; }
+        vent.timer += delta_time;
+        if vent.timer >= vent.time_to_open {
+            vent.is_open = true;
+            anim.current_animation = TextureAnimKey::Vent(VentAnim::Opening);
+            anim.playback_state = PlaybackState::Playing;
+            inte.is_enabled = true;
+        }
+    }
 }
