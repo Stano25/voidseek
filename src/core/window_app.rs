@@ -7,9 +7,9 @@ use winit::event::{ElementState, KeyEvent};
 use winit::keyboard::{PhysicalKey, KeyCode};
 use winit::dpi::LogicalSize;
 use std::time::Instant;
-use crate::core::renderer::{self, WgpuState, SpriteInstance};
-use crate::game;
+use crate::core::renderer::{WgpuState};
 use crate::game::state::GameState;
+use crate::game::definitions::Input;
 
 const TITLE: &str = "Voidseek";
 
@@ -102,20 +102,20 @@ impl ApplicationHandler for WindowApp {
                         self.toggle_mouse_lock();
                     }
                     (PhysicalKey::Code(KeyCode::KeyE), ElementState::Pressed) => {
-                        self.game.input_state.interact = true;
+                        self.game.change_input(Input::Interact, true);
                     }
 
                     (PhysicalKey::Code(KeyCode::KeyW), state) => {
-                        self.game.input_state.forward = state == ElementState::Pressed;
+                        self.game.change_input(Input::Forward, state == ElementState::Pressed);
                     }
                     (PhysicalKey::Code(KeyCode::KeyS), state) => {
-                        self.game.input_state.backward = state == ElementState::Pressed;
+                        self.game.change_input(Input::Backward, state == ElementState::Pressed);
                     }
                     (PhysicalKey::Code(KeyCode::KeyA), state) => {
-                        self.game.input_state.left = state == ElementState::Pressed;
+                        self.game.change_input(Input::Left, state == ElementState::Pressed);
                     }
                     (PhysicalKey::Code(KeyCode::KeyD), state) => {
-                        self.game.input_state.right = state == ElementState::Pressed;
+                        self.game.change_input(Input::Right, state == ElementState::Pressed);
                     }
                     _ => (),
                 }
@@ -163,7 +163,7 @@ impl ApplicationHandler for WindowApp {
     fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: winit::event::DeviceId, event: winit::event::DeviceEvent) {
         if let winit::event::DeviceEvent::MouseMotion { delta: (dx, _dy) } = event {
             if self.mouse_locked {
-                self.game.input_state.mouse_dx += dx;
+                self.game.add_camera_dx(dx);
             }
         }
     }

@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use crate::{TILE_SIZE};
 
 pub struct GameState {
-    pub input_state: InputState,
+    input_state: InputState,
     world: World,
     map: MapManager,
     player: Option<Entity>,
@@ -185,6 +185,20 @@ impl GameState {
 
     pub fn clear_map_flag(&mut self) {
         self.map.clear_map_flag();
+    }
+
+    pub fn change_input(&mut self, input_type: Input, is_pressed: bool) {
+        match input_type {
+            Input::Forward => self.input_state.forward = is_pressed,
+            Input::Backward => self.input_state.backward = is_pressed,
+            Input::Left => self.input_state.left = is_pressed,
+            Input::Right => self.input_state.right = is_pressed,
+            Input::Interact => self.input_state.interact = is_pressed,
+        }
+    }
+    
+    pub fn add_camera_dx(&mut self, dx: f64) {
+        self.input_state.mouse_dx += dx;
     }
 }
 

@@ -79,3 +79,11 @@ pub enum VentOrientation {
     Horizontal,
     Vertical,
 }
+
+pub enum Input {
+    Forward,
+    Backward,
+    Left,
+    Right,
+    Interact,
+}
