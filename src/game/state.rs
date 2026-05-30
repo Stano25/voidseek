@@ -1,17 +1,16 @@
 use crate::game::input::InputState;
 use crate::core::renderer::{SpriteInstance};
 use hecs::{Entity, World};
-use crate::game::components::{Position, Rotation, Velocity, PlayerController, Sprite, Interactable, TextureAnimator};
+use crate::game::components::{Position, Rotation, Velocity, PlayerController, Sprite, Interactable, TextureAnimator, Vent};
 use crate::game::systems::*;
 use crate::game::definitions::*;
+use crate::game::map::MapManager;
 
 pub struct GameState {
     pub world: World,
     pub input_state: InputState,
     pub player: Option<Entity>,
-    map_walls: Vec<u32>,
-    map_floor: Vec<u32>,
-    map_ceiling: Vec<u32>,
+    map: MapManager,
 }
 
 impl GameState {
@@ -20,50 +19,30 @@ impl GameState {
             world: World::new(),
             input_state: InputState::default(),
             player: None,
-            map_walls: vec![
-                1,1,1,1,1,1,1,1,
-                1,0,1,0,0,0,0,1,
-                1,0,1,0,1,5,0,1,
-                1,0,1,0,4,0,0,1,
-                1,0,0,0,1,0,0,1,
-                1,0,1,4,1,0,0,1,
-                1,0,0,0,0,0,0,1,
-                1,1,1,1,1,1,1,1,
-            ],
-            map_floor: vec![
-                0,0,0,0,0,0,0,0,
-                0,2,0,2,2,2,2,0,
-                0,2,0,2,0,0,2,0,
-                0,2,0,2,0,2,2,0,
-                0,2,2,2,0,2,2,0,
-                0,2,0,0,0,2,2,0,
-                0,2,2,2,2,2,2,2,
-                0,0,0,0,0,0,0,0,
-            ],
-            map_ceiling: vec![
-                0,0,0,0,0,0,0,0,
-                0,3,0,3,3,3,3,0,
-                0,3,0,3,0,0,3,0,
-                0,3,0,3,0,3,3,0,
-                0,3,3,3,0,3,3,0,
-                0,3,0,0,0,3,3,0,
-                0,3,3,3,3,3,3,3,
-                0,0,0,0,0,0,0,0,
-            ]
+            map: MapManager::default(),
         }
     }
 
     pub fn start(&mut self) {
+        self.map.load_from_layout(&[
+            "11111111",
+            "1.1....1",
+            "1.1.11.1",
+            "1.1.1..1",
+            "1...V..1",
+            "1.111.11",
+            "1......1",
+            "11111111",
+        ], &mut self.world);
         self.create_player(1.5, 1.5, 0.0, 1.95);
-        self.create_sprite(1.5, 6.5, 0.0, true, 0.0, 1.0, 1, 3);
-        self.create_vent(4.0, 3.0, true, vent_hit);
+        GameState::create_sprite(&mut self.world,1.5, 6.5, 0.0, true, 0.0, 1.0, 1, 3);
     }
 
     pub fn update(&mut self, delta_time: f32) {
         PlayerRotationSystem(&mut self.world, &mut self.input_state);
-        PlayerMovementSystem(&mut self.world, delta_time, &self.map_walls, &self.input_state);
+        PlayerMovementSystem(&mut self.world, delta_time, &self.map.get_walls_data(), &self.input_state);
         AnimatorSystem(&mut self.world, delta_time);
-        InteractSystem(&mut self.world, &mut self.input_state, &mut self.player, &self.map_walls);
+        InteractSystem(&mut self.world, &mut self.input_state, &mut self.player, &self.map.get_walls_data());
         VentSystem(&mut self.world, delta_time);
     }
 
@@ -116,31 +95,47 @@ impl GameState {
 
     pub fn get_map_data(&self) -> Vec<u32> {
         let mut map_data = Vec::new();
-        for i in 0..self.map_walls.len() {
-            map_data.push(self.map_walls[i]);
-            map_data.push(self.map_floor[i]);
-            map_data.push(self.map_ceiling[i]);
+        let walls_data = self.map.get_walls_data();
+        let floor_data = self.map.get_floor_data();
+        let ceiling_data = self.map.get_ceiling_data();
+
+        for i in 0..walls_data.len() {
+            map_data.push(walls_data[i] as u32);
+            map_data.push(floor_data[i] as u32);
+            map_data.push(ceiling_data[i] as u32);
             map_data.push(0);
         }
         map_data
     }
 
-    pub fn create_sprite(&mut self, x: f32, y: f32, angle: f32, is_visible: bool, z: f32, scale: f32, atlas_index_front: u32, atlas_index_back: u32) {
-        self.world.spawn((
+    pub fn create_sprite(world: &mut World, x: f32, y: f32, angle: f32, is_visible: bool, z: f32, scale: f32, atlas_index_front: u32, atlas_index_back: u32) {
+        world.spawn((
             Position { x, y },
             Rotation { angle },
             Sprite { z, scale, is_visible, atlas_index_front, atlas_index_back },
         ));
     }
 
-    pub fn create_vent(&mut self, x: f32, y: f32, is_enabled: bool, on_interact: InteractCallback) {
-        self.world.spawn((
+    pub fn create_vent(world: &mut World, x: f32, y: f32, is_enabled: bool, on_interact: InteractCallback) {
+        world.spawn((
             Position { x, y },
             Interactable { is_enabled, on_interact },
         ));
     }
+
+    pub fn destroy_all_vents(world: &mut World) {
+        let vent_entities: Vec<Entity> = world
+            .query::<(&Entity, &Vent)>() 
+            .iter()
+            .map(|(entity, _vent)| *entity) 
+            .collect();
+
+        for entity in vent_entities {
+            world.despawn(entity).ok();
+        }
+    }
 }
 
-fn vent_hit(world: &mut World, player: &mut Option<Entity>, entity: Entity) {
+pub fn vent_hit(world: &mut World, player: &mut Option<Entity>, entity: Entity) {
     println!("Ventujem");
 }

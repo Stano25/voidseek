@@ -28,7 +28,7 @@ pub fn PlayerRotationSystem(world: &mut World, input: &mut InputState) {
 }
 
 #[allow(non_snake_case)]
-pub fn PlayerMovementSystem(world: &mut World, delta_time: f32, map_walls: &[u32], input: &InputState) {
+pub fn PlayerMovementSystem(world: &mut World, delta_time: f32, map_walls: &[u16], input: &InputState) {
     for (pos, rot, vel) in world.query_mut::<(&mut Position, &mut Rotation, &mut Velocity)>() {
         let mut move_x: f32 = 0.0;
         let mut move_y: f32 = 0.0;
@@ -73,7 +73,7 @@ pub fn PlayerMovementSystem(world: &mut World, delta_time: f32, map_walls: &[u32
     }
 }
 
-fn is_wall(check_x: f32, check_y: f32, map: &[u32]) -> bool {
+fn is_wall(check_x: f32, check_y: f32, map: &[u16]) -> bool {
     let inverted_size = 1.0 / TILE_SIZE as f32;
 
     let player_rad = PLAYER_RADIUS * inverted_size;
@@ -160,7 +160,7 @@ pub fn AnimatorSystem(world: &mut World, delta_time: f32) {
 }
 
 #[allow(non_snake_case)]
-pub fn InteractSystem(world: &mut World, input: &mut InputState, player: &mut Option<Entity>, map_walls: &[u32]) {
+pub fn InteractSystem(world: &mut World, input: &mut InputState, player: &mut Option<Entity>, map_walls: &[u16]) {
     if !input.interact || player.is_none() {
         return;
     }

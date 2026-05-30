@@ -72,6 +72,7 @@ pub type InteractCallback = fn(&mut World, &mut Option<Entity>, Entity);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VentOrientation {
+    None,
     Horizontal,
     Vertical,
 }
