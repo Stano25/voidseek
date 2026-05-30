@@ -10,6 +10,7 @@ pub struct MapManager {
     ceiling_data: Vec<u16>,
 
     dirty_tiles: Vec<(u32, u32, u32, u32)>,
+    map_change_flag: bool,
 }
 
 impl Default for MapManager {
@@ -19,6 +20,7 @@ impl Default for MapManager {
             floor_data: vec![0; MAX_MAP_TILES as usize],
             ceiling_data: vec![0; MAX_MAP_TILES as usize],
             dirty_tiles: Vec::new(),
+            map_change_flag: false,
         }
      }
 }
@@ -55,6 +57,8 @@ impl MapManager {
                 self.walls_data[i] = 1;
             }
         }
+
+        self.map_change_flag = true;
     }
 
     fn check_vent_placement(&self, x: u32, y: u32) -> (bool, VentOrientation) {
@@ -102,5 +106,13 @@ impl MapManager {
 
     pub fn get_dirty_tiles(&self) -> &[(u32, u32, u32, u32)] {
         &self.dirty_tiles
+    }
+
+    pub fn get_map_change_flag(&self) -> bool {
+        self.map_change_flag
+    }
+
+    pub fn clear_map_flag(&mut self) {
+        self.map_change_flag = false;
     }
 }

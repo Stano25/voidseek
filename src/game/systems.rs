@@ -1,12 +1,10 @@
 use crate::game::components::*;
 use crate::game::input::InputState;
 use crate::game::definitions::*;
-use crate::game::state::GameState;
 use crate::game::map::MapManager;
 use crate::{TILE_SIZE, MAX_MAP_WIDTH, MAX_MAP_HEIGHT};
 
 use hecs::{Entity, World};
-use std::char::MAX;
 use std::f32::consts::PI;
 
 #[allow(non_snake_case)]

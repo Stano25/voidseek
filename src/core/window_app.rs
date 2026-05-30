@@ -8,6 +8,7 @@ use winit::keyboard::{PhysicalKey, KeyCode};
 use winit::dpi::LogicalSize;
 use std::time::Instant;
 use crate::core::renderer::{self, WgpuState, SpriteInstance};
+use crate::game;
 use crate::game::state::GameState;
 
 const TITLE: &str = "Voidseek";
@@ -75,11 +76,6 @@ impl ApplicationHandler for WindowApp {
         // Inicializácia WgpuState cez pollster (asynchrónna operácia v synchrónnom kontexte)
         let wgpu_state = pollster::block_on(WgpuState::new(window));
         self.renderer = Some(wgpu_state);
-    
-        
-        if let Some(renderer) = &mut self.renderer {
-            renderer.update_map(&self.game.get_map_data());
-        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
@@ -136,6 +132,11 @@ impl ApplicationHandler for WindowApp {
                 self.game.update(dt);
 
                 if let Some(renderer) = &mut self.renderer {
+                    if self.game.get_map_change_flag(){
+                        renderer.update_map(&self.game.get_map_data());
+                        self.game.clear_map_flag();
+                    }
+
                     if let Some((cam_x, cam_y, cam_angle)) = self.game.get_camera_info() {
                         renderer.update_camera(cam_x, cam_y, cam_angle);
                     }

@@ -9,10 +9,10 @@ use std::collections::HashMap;
 use crate::{TILE_SIZE};
 
 pub struct GameState {
-    pub world: World,
     pub input_state: InputState,
-    pub player: Option<Entity>,
+    world: World,
     map: MapManager,
+    player: Option<Entity>,
 }
 
 impl GameState {
@@ -177,6 +177,14 @@ impl GameState {
         for entity in vent_entities {
             world.despawn(entity).ok();
         }
+    }
+
+    pub fn get_map_change_flag(&self) -> bool {
+        self.map.get_map_change_flag()
+    }
+
+    pub fn clear_map_flag(&mut self) {
+        self.map.clear_map_flag();
     }
 }
 
