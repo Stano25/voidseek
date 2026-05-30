@@ -2,6 +2,7 @@ use crate::game::components::*;
 use crate::game::input::InputState;
 use crate::game::definitions::*;
 use crate::game::state::GameState;
+use crate::game::map::MapManager;
 use crate::{TILE_SIZE, MAX_MAP_WIDTH, MAX_MAP_HEIGHT};
 
 use hecs::{Entity, World};
@@ -100,8 +101,8 @@ fn is_wall(check_x: f32, check_y: f32, map: &[u16]) -> bool {
 }
 
 #[allow(non_snake_case)]
-pub fn AnimatorSystem(world: &mut World, delta_time: f32) {
-    for (animator, sprite) in world.query_mut::<(&mut SpriteAnimator,&mut Sprite)>() {
+pub fn AnimatorSystem(world: &mut World, delta_time: f32, map: &mut MapManager) {
+    for (pos, animator, sprite) in world.query_mut::<(&Position, &mut SpriteAnimator,&mut Sprite)>() {
         if animator.playback_state != PlaybackState::Playing {
             continue;
         }
@@ -130,11 +131,10 @@ pub fn AnimatorSystem(world: &mut World, delta_time: f32) {
         }
     }
 
-    for (animator, texture) in world.query_mut::<(&mut TextureAnimator,&mut Texture)>() {
+    for (pos, animator) in world.query_mut::<(&Position, &mut TextureAnimator)>() {
         if animator.playback_state != PlaybackState::Playing {
             continue;
         }
-
         if let Some(animation) = animator.animations.get(&animator.current_animation) {
             animator.timer += delta_time;
             if animator.timer >= animation.frame_duration {
@@ -153,7 +153,7 @@ pub fn AnimatorSystem(world: &mut World, delta_time: f32) {
                 }
             }
             if animator.playback_state == PlaybackState::Playing {
-                texture.atlas_index = animation.frames[animator.current_frame] as u32;
+                map.set_wall(pos.x as u32, pos.y as u32, animation.frames[animator.current_frame] as u16);
             }
         }
     }
@@ -230,7 +230,7 @@ pub fn InteractSystem(world: &mut World, input: &mut InputState, player: &mut Op
             let tile = map_walls[map_index];
             
             if tile != 0 {
-                println!("Hit wall at ({}, {})", map_x, map_y);
+                //println!("Hit wall at ({}, {})", map_x, map_y);
                 entity_hit = find_interactable_at_position(world, map_x as f32, map_y as f32);
                 break;
             }
@@ -257,12 +257,15 @@ fn find_interactable_at_position(world: &World, x: f32, y: f32) -> Option<Entity
 
 #[allow(non_snake_case)]
 pub fn VentSystem(world: &mut World, delta_time: f32) {
-    for (vent) in world.query_mut::<(&mut Vent)>() {
+    for (vent, texture_animator) in world.query_mut::<(&mut Vent, &mut TextureAnimator)>() {
         if vent.is_open { continue; }
         vent.timer += delta_time;
+        //println!("Vent timer: {}", vent.timer);
         if vent.timer >= vent.time_to_open {
             vent.is_open = true;
             vent.timer = 0.0;
+            texture_animator.current_animation = TextureAnimKey::Vent(VentAnim::Opening);
+            texture_animator.playback_state = PlaybackState::Playing;
         }
     }
 }

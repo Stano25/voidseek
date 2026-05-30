@@ -167,7 +167,10 @@ impl WgpuState {
         // Inicializácia atlasu textúr
         // =====================================================================
         let atlas_texture = Self::create_atlas_texture(&device, &queue, wgpu::TextureFormat::Rgba8UnormSrgb,
-             &["Wall-Texture.png", "Floor-Texture.png", "Ceiling-Texture.png", "Wall-vent-open.png","Wall-vent-closed.png"]);
+             &["Wall-Texture.png", "Floor-Texture.png", "Ceiling-Texture.png","Wall-vent-closed.png",
+                                "Wall-vent-anim-1.png","Wall-vent-anim-2.png","Wall-vent-anim-3.png",
+                                "Wall-vent-anim-4.png","Wall-vent-anim-5.png","Wall-vent-anim-6.png",
+                                "Wall-vent-anim-7.png","Wall-vent-anim-8.png","Wall-vent-open.png"]);
 
         let atlas_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Texture Array View"),
@@ -799,6 +802,16 @@ impl WgpuState {
             &self.sprite_resources.buffer,
             0,
             bytemuck::cast_slice(sprites),
+        );
+    }
+
+    pub fn update_tile(&mut self, index: u32, wall_id: u32, floor_id: u32, ceiling_id: u32) {
+        let byte_offset = (index * 16) as u64;
+        let tile_data: [u32; 4] = [wall_id, floor_id, ceiling_id, 0];
+        self.queue.write_buffer(
+            &self.map_resources.data_buffer,
+            byte_offset,
+            bytemuck::cast_slice(&tile_data),
         );
     }
 }

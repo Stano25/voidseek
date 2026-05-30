@@ -48,7 +48,7 @@ impl MapManager {
             let (vent_valid, vent_orientation) = self.check_vent_placement(x, y);
             let i = (y * MAX_MAP_WIDTH  + x) as usize;
             if vent_valid {
-                self.walls_data[i] = 4;
+                self.walls_data[i] = 14;
                 GameState::create_vent(world, x as f32, y as f32, true, vent_hit, vent_orientation);
             }
             else {
@@ -78,7 +78,15 @@ impl MapManager {
         }
         
         (valid_placement, orientation)
-     }
+    }
+
+    pub fn set_wall(&mut self, x: u32, y: u32, texture_id: u16) {
+        if x < MAX_MAP_WIDTH && y < MAX_MAP_HEIGHT {
+            let index = (y * MAX_MAP_WIDTH + x) as usize;
+            self.walls_data[index] = texture_id;
+            self.dirty_tiles.push((index as u32, texture_id as u32, self.floor_data[index] as u32, self.ceiling_data[index] as u32));
+        }
+    }
 
     pub fn get_walls_data(&self) -> &[u16] {
         &self.walls_data
@@ -90,5 +98,9 @@ impl MapManager {
 
     pub fn get_ceiling_data(&self) -> &[u16] {
         &self.ceiling_data
+    }
+
+    pub fn get_dirty_tiles(&self) -> &[(u32, u32, u32, u32)] {
+        &self.dirty_tiles
     }
 }

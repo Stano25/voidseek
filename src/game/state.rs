@@ -1,10 +1,11 @@
 use crate::game::input::InputState;
 use crate::core::renderer::{SpriteInstance};
 use hecs::{Entity, World};
-use crate::game::components::{Position, Rotation, Velocity, PlayerController, Sprite, Interactable, TextureAnimator, Vent};
+use crate::game::components::{Position, Rotation, Velocity, PlayerController, Sprite, Interactable, TextureAnimation, Vent, TextureAnimator};
 use crate::game::systems::*;
 use crate::game::definitions::*;
 use crate::game::map::MapManager;
+use std::collections::HashMap;
 use crate::{TILE_SIZE};
 
 pub struct GameState {
@@ -42,7 +43,7 @@ impl GameState {
     pub fn update(&mut self, delta_time: f32) {
         PlayerRotationSystem(&mut self.world, &mut self.input_state);
         PlayerMovementSystem(&mut self.world, delta_time, &self.map.get_walls_data(), &self.input_state);
-        AnimatorSystem(&mut self.world, delta_time);
+        AnimatorSystem(&mut self.world, delta_time, &mut self.map);
         InteractSystem(&mut self.world, &mut self.input_state, &mut self.player, &self.map.get_walls_data());
         VentSystem(&mut self.world, delta_time);
     }
@@ -109,6 +110,10 @@ impl GameState {
         map_data
     }
 
+    pub fn get_dirty_tiles(&self) -> &[(u32, u32, u32, u32)] {
+        self.map.get_dirty_tiles()
+    }
+
     pub fn create_sprite(world: &mut World, x: f32, y: f32, angle: f32, is_visible: bool, z: f32, scale: f32, atlas_index_front: u32, atlas_index_back: u32) {
         world.spawn((
             Position { x, y },
@@ -126,15 +131,39 @@ impl GameState {
         let (vent_center_x, vent_center_y) = (x + 0.5, y + 0.5);
 
         let (pos_1, pos_2) = match orientation {
-            VentOrientation::Vertical => (Position { x: vent_center_x, y: vent_center_y - 0.5- player_rad - vent_offset}, Position { x: vent_center_x, y: vent_center_y + 0.5 + player_rad + vent_offset}),
+            VentOrientation::Vertical => (Position { x: vent_center_x, y: vent_center_y - 0.5 - player_rad - vent_offset}, Position { x: vent_center_x, y: vent_center_y + 0.5 + player_rad + vent_offset}),
             VentOrientation::Horizontal => (Position{ x: vent_center_x - 0.5 - player_rad - vent_offset, y: vent_center_y }, Position{ x: vent_center_x + 0.5 + player_rad + vent_offset, y: vent_center_y }),
             VentOrientation::None => { return; }
         };
+        let closing = TextureAnimation {
+            frames: vec![13,12,11,10,9,8,7,6,5,4],
+            frame_duration: 0.05,
+            playback_mode: PlaybackMode::Once,
+        };
+
+        let opening = TextureAnimation {
+            frames: vec![4,5,6,7,8,9,10,11,12,13],
+            frame_duration: 0.05,
+            playback_mode: PlaybackMode::Once,
+        };
+
         //println!("Creating vent at ({}, {}) with orientation {:?} and destinations: ({}, {}) and ({}, {})", x, y, orientation, pos_1.x, pos_1.y, pos_2.x, pos_2.y);
         world.spawn((
             Position { x, y },
             Interactable { is_enabled, on_interact },
             Vent { is_open: true, timer: 0.0, time_to_open: TIME_TO_OPEN_VENT, orientation, destinations: (pos_1, pos_2) },
+            TextureAnimator { 
+                animations: HashMap::from([
+                    (TextureAnimKey::Vent(VentAnim::Opening), opening),
+                    (TextureAnimKey::Vent(VentAnim::Closing), closing),
+                ]),
+                current_animation: TextureAnimKey::None,
+
+                current_frame: 0,
+                timer: 0.0,
+                playback_state: PlaybackState::Stopped,
+                direction: AnimationDirection::Forward,
+            },
         ));
     }
 
@@ -186,7 +215,9 @@ pub fn vent_hit(world: &mut World, player: &mut Option<Entity>, entity: Entity) 
         }
     }
 
-    if let Ok(vent) = world.query_one_mut::<(&mut Vent)>(entity) && should_vent_close {
+    if let Ok((mut vent, mut texture_animator)) = world.query_one_mut::<(&mut Vent, &mut TextureAnimator)>(entity) && should_vent_close {
         vent.is_open = false;
+        texture_animator.current_animation = TextureAnimKey::Vent(VentAnim::Closing);
+        texture_animator.playback_state = PlaybackState::Playing;
     }
 }
