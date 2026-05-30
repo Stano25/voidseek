@@ -257,14 +257,12 @@ fn find_interactable_at_position(world: &World, x: f32, y: f32) -> Option<Entity
 
 #[allow(non_snake_case)]
 pub fn VentSystem(world: &mut World, delta_time: f32) {
-    for (vent, anim, inte) in world.query_mut::<(&mut Vent, &mut TextureAnimator, &mut Interactable)>() {
+    for (vent) in world.query_mut::<(&mut Vent)>() {
         if vent.is_open { continue; }
         vent.timer += delta_time;
         if vent.timer >= vent.time_to_open {
             vent.is_open = true;
-            anim.current_animation = TextureAnimKey::Vent(VentAnim::Opening);
-            anim.playback_state = PlaybackState::Playing;
-            inte.is_enabled = true;
+            vent.timer = 0.0;
         }
     }
 }

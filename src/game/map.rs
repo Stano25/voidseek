@@ -49,7 +49,7 @@ impl MapManager {
             let i = (y * MAX_MAP_WIDTH  + x) as usize;
             if vent_valid {
                 self.walls_data[i] = 4;
-                GameState::create_vent(world, x as f32, y as f32, true, vent_hit);
+                GameState::create_vent(world, x as f32, y as f32, true, vent_hit, vent_orientation);
             }
             else {
                 self.walls_data[i] = 1;

@@ -5,6 +5,7 @@ use crate::game::components::{Position, Rotation, Velocity, PlayerController, Sp
 use crate::game::systems::*;
 use crate::game::definitions::*;
 use crate::game::map::MapManager;
+use crate::{TILE_SIZE};
 
 pub struct GameState {
     pub world: World,
@@ -116,10 +117,24 @@ impl GameState {
         ));
     }
 
-    pub fn create_vent(world: &mut World, x: f32, y: f32, is_enabled: bool, on_interact: InteractCallback) {
+    pub fn create_vent(world: &mut World, x: f32, y: f32, is_enabled: bool, on_interact: InteractCallback, orientation: VentOrientation) {
+        let inverted_size = 1.0 / TILE_SIZE as f32;
+
+        let player_rad = PLAYER_RADIUS * inverted_size;
+        let vent_offset = VENT_OFFSET * inverted_size;
+
+        let (vent_center_x, vent_center_y) = (x + 0.5, y + 0.5);
+
+        let (pos_1, pos_2) = match orientation {
+            VentOrientation::Vertical => (Position { x: vent_center_x, y: vent_center_y - 0.5- player_rad - vent_offset}, Position { x: vent_center_x, y: vent_center_y + 0.5 + player_rad + vent_offset}),
+            VentOrientation::Horizontal => (Position{ x: vent_center_x - 0.5 - player_rad - vent_offset, y: vent_center_y }, Position{ x: vent_center_x + 0.5 + player_rad + vent_offset, y: vent_center_y }),
+            VentOrientation::None => { return; }
+        };
+        //println!("Creating vent at ({}, {}) with orientation {:?} and destinations: ({}, {}) and ({}, {})", x, y, orientation, pos_1.x, pos_1.y, pos_2.x, pos_2.y);
         world.spawn((
             Position { x, y },
             Interactable { is_enabled, on_interact },
+            Vent { is_open: true, timer: 0.0, time_to_open: TIME_TO_OPEN_VENT, orientation, destinations: (pos_1, pos_2) },
         ));
     }
 
@@ -137,5 +152,41 @@ impl GameState {
 }
 
 pub fn vent_hit(world: &mut World, player: &mut Option<Entity>, entity: Entity) {
-    println!("Ventujem");
+    let player = if let Some(player) = player { *player } else { return; };
+
+    let mut vent_querys = None;
+    let mut should_vent_close = false;
+    if let Ok(mut vent) = world.query_one_mut::<(&Vent)>(entity) {
+        if !vent.is_open{ return; }
+        vent_querys = Some(*vent);
+    }
+
+    if let Some(vent) = vent_querys {
+        if let Ok(mut player_pos) = world.query_one_mut::<&mut Position>(player) {
+            let first_point_distance = {
+                let dx = player_pos.x - vent.destinations.0.x;
+                let dy = player_pos.y - vent.destinations.0.y;
+                (dx * dx + dy * dy).sqrt()
+            };
+
+            let second_point_distance = {
+                let dx = player_pos.x - vent.destinations.1.x;
+                let dy = player_pos.y - vent.destinations.1.y;
+                (dx * dx + dy * dy).sqrt()
+            };
+
+            if first_point_distance < second_point_distance {
+                player_pos.x = vent.destinations.1.x;
+                player_pos.y = vent.destinations.1.y;
+            } else {
+                player_pos.x = vent.destinations.0.x;
+                player_pos.y = vent.destinations.0.y;
+            }
+            should_vent_close = true;
+        }
+    }
+
+    if let Ok(vent) = world.query_one_mut::<(&mut Vent)>(entity) && should_vent_close {
+        vent.is_open = false;
+    }
 }

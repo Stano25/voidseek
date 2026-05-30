@@ -2,8 +2,10 @@ use hecs::{Entity, World};
 use crate::game::state::GameState;
 
 // --- Constants ---
+pub const VENT_OFFSET: f32 = 10.0;
 pub const PLAYER_RADIUS: f32 = 10.0;
 pub const INTERACT_DISTANCE: f32 = 1.5;
+pub const TIME_TO_OPEN_VENT: f32 = 45.0;
 
 // --- Animation Playback Control ---
 
