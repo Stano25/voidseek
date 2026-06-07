@@ -210,7 +210,8 @@ impl WgpuState {
         };
 
         let atlas_sprite_texture = Self::create_atlas_texture(&device, &queue, wgpu::TextureFormat::Rgba8UnormSrgb,
-             &["Sprite-bg.png", "Sprite-no-bg.png","Sprite-bg-back.png", "Sprite-no-bg-back.png"]);
+             &["Sprite-bg.png", "Sprite-no-bg.png","Sprite-bg-back.png", "Sprite-no-bg-back.png", "Player-front.png",
+                                "Player-back.png", "Enemy-front.png", "Enemy-back.png"]);
 
         let atlas_view = atlas_sprite_texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Texture Array View"),

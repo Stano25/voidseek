@@ -37,14 +37,15 @@ impl GameState {
             "11111111",
         ], &mut self.world);
         self.create_player(1.5, 1.5, 0.0, 1.95);
-        GameState::create_sprite(&mut self.world,1.5, 6.5, 0.0, true, 0.0, 1.0, 1, 3);
+        GameState::create_sprite(&mut self.world,1.5, 6.5, 0.0, true, 0.0, 1.0, 4, 5);
+        GameState::create_sprite(&mut self.world,4.5, 6.5, 0.0, true, 0.0, 1.0, 6, 7);
     }
 
     pub fn update(&mut self, delta_time: f32) {
         PlayerRotationSystem(&mut self.world, &mut self.input_state);
-        PlayerMovementSystem(&mut self.world, delta_time, &self.map.get_walls_data(), &self.input_state);
+        PlayerMovementSystem(&mut self.world, delta_time, &self.map.walls_data, &self.input_state);
         AnimatorSystem(&mut self.world, delta_time, &mut self.map);
-        InteractSystem(&mut self.world, &mut self.input_state, &mut self.player, &self.map.get_walls_data());
+        InteractSystem(&mut self.world, &mut self.input_state, &mut self.player, &self.map.walls_data);
         VentSystem(&mut self.world, delta_time);
     }
 
@@ -97,21 +98,18 @@ impl GameState {
 
     pub fn get_map_data(&self) -> Vec<u32> {
         let mut map_data = Vec::new();
-        let walls_data = self.map.get_walls_data();
-        let floor_data = self.map.get_floor_data();
-        let ceiling_data = self.map.get_ceiling_data();
 
-        for i in 0..walls_data.len() {
-            map_data.push(walls_data[i] as u32);
-            map_data.push(floor_data[i] as u32);
-            map_data.push(ceiling_data[i] as u32);
+        for i in 0..self.map.walls_data.len() {
+            map_data.push(self.map.walls_data[i] as u32);
+            map_data.push(self.map.floor_data[i] as u32);
+            map_data.push(self.map.ceiling_data[i] as u32);
             map_data.push(0);
         }
         map_data
     }
 
     pub fn get_dirty_tiles(&self) -> &[(u32, u32, u32, u32)] {
-        self.map.get_dirty_tiles()
+        self.map.dirty_tiles.as_slice()
     }
 
     pub fn create_sprite(world: &mut World, x: f32, y: f32, angle: f32, is_visible: bool, z: f32, scale: f32, atlas_index_front: u32, atlas_index_back: u32) {
@@ -180,11 +178,11 @@ impl GameState {
     }
 
     pub fn get_map_change_flag(&self) -> bool {
-        self.map.get_map_change_flag()
+        self.map.map_change_flag
     }
 
     pub fn clear_map_flag(&mut self) {
-        self.map.clear_map_flag();
+        self.map.map_change_flag = false;
     }
 
     pub fn change_input(&mut self, input_type: Input, is_pressed: bool) {
@@ -202,7 +200,7 @@ impl GameState {
     }
 }
 
-pub fn vent_hit(world: &mut World, player: &mut Option<Entity>, entity: Entity) {
+pub fn vent_interact(world: &mut World, player: &mut Option<Entity>, entity: Entity) {
     let player = if let Some(player) = player { *player } else { return; };
 
     let mut vent_querys = None;

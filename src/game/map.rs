@@ -2,15 +2,15 @@ use crate::{MAX_MAP_HEIGHT, MAX_MAP_TILES, MAX_MAP_WIDTH, game::state::GameState
 use crate::game::definitions::*;
 use hecs::{World};
 use wgpu::wgc::validation;
-use crate::game::state::vent_hit;
+use crate::game::state::vent_interact;
 
 pub struct MapManager {
-    walls_data: Vec<u16>,
-    floor_data: Vec<u16>,
-    ceiling_data: Vec<u16>,
+    pub walls_data: Vec<u16>,
+    pub floor_data: Vec<u16>,
+    pub ceiling_data: Vec<u16>,
 
-    dirty_tiles: Vec<(u32, u32, u32, u32)>,
-    map_change_flag: bool,
+    pub dirty_tiles: Vec<(u32, u32, u32, u32)>,
+    pub map_change_flag: bool,
 }
 
 impl Default for MapManager {
@@ -51,7 +51,7 @@ impl MapManager {
             let i = (y * MAX_MAP_WIDTH  + x) as usize;
             if vent_valid {
                 self.walls_data[i] = 14;
-                GameState::create_vent(world, x as f32, y as f32, true, vent_hit, vent_orientation);
+                GameState::create_vent(world, x as f32, y as f32, true, vent_interact, vent_orientation);
             }
             else {
                 self.walls_data[i] = 1;
@@ -90,29 +90,5 @@ impl MapManager {
             self.walls_data[index] = texture_id;
             self.dirty_tiles.push((index as u32, texture_id as u32, self.floor_data[index] as u32, self.ceiling_data[index] as u32));
         }
-    }
-
-    pub fn get_walls_data(&self) -> &[u16] {
-        &self.walls_data
-    }
-
-    pub fn get_floor_data(&self) -> &[u16] {
-        &self.floor_data
-    }
-
-    pub fn get_ceiling_data(&self) -> &[u16] {
-        &self.ceiling_data
-    }
-
-    pub fn get_dirty_tiles(&self) -> &[(u32, u32, u32, u32)] {
-        &self.dirty_tiles
-    }
-
-    pub fn get_map_change_flag(&self) -> bool {
-        self.map_change_flag
-    }
-
-    pub fn clear_map_flag(&mut self) {
-        self.map_change_flag = false;
     }
 }

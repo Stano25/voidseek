@@ -141,8 +141,10 @@ impl ApplicationHandler for WindowApp {
                         renderer.update_camera(cam_x, cam_y, cam_angle);
                     }
 
-                    for dirty_tile in self.game.get_dirty_tiles() {
-                        renderer.update_tile(dirty_tile.0, dirty_tile.1, dirty_tile.2, dirty_tile.3);
+                    if self.game.get_dirty_tiles().len() > 0 {
+                        for dirty_tile in self.game.get_dirty_tiles() {
+                            renderer.update_tile(dirty_tile.0, dirty_tile.1, dirty_tile.2, dirty_tile.3);
+                        }
                     }
 
                     let sprite_instances = self.game.get_sprites();
